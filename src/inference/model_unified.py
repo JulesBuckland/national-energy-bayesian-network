@@ -493,8 +493,9 @@ def run_national_unified_model(
     draws = 10 if is_pilot else (draws_override if draws_override is not None else MCMC_SAMPLES)
     tune = 10 if is_pilot else (tune_override if tune_override is not None else MCMC_TUNE)
     chains = 2 if is_pilot else MCMC_CHAINS
-    # Sparse implementation still requires sequential execution (cores=1) to stay within 8GB RAM limit
-    cores = 1
+    # Each chain peaks at ~1.2 GB; with ≥16 GB RAM, parallel chains are safe.
+    # On the original 8 GB machine this was pinned to 1; 32 GB allows full parallelism.
+    cores = min(chains, MCMC_CORES)
 
     # --- Sampling: PyMC NUTS with sequential chains for 8GB RAM ---
     with unified_model:

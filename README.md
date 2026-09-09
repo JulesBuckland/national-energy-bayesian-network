@@ -38,28 +38,35 @@ flowchart TD
     classDef func fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
     classDef output fill:#660099,color:#ffffff,stroke:#333333,stroke-width:2px
 
+    %% ── Datasets (external to both pipelines) ──
+    Archetypes["32 building archetypes<br/>8 age bands × 4 built forms"]:::dataset
+    Census["Census 2021<br/>housing + tenure tables"]:::dataset
+    NEED["NEED 2024<br/>50k gas-consumption panel"]:::dataset
+    EFUS["EFUS 2017<br/>2,632 monitored dwellings"]:::dataset
+    Boundaries["MSOA boundary<br/>geometries (Dec 2021)"]:::dataset
+
     subgraph Surrogate ["Surrogate training (offline, one-time)"]
         direction TB
         LHS["Latin hypercube sampling<br/>over the archetype design space"]:::func
         EP["EnergyPlus simulation"]:::func
-        GPTrain["Gaussian-process surrogate<br/>trained on simulation outputs"]:::func
+        GPTrain["Gaussian-process surrogate<br/>(6-D Matérn, R² ≥ 0.99)"]:::func
         LHS --> EP --> GPTrain
     end
 
     subgraph Pipeline ["National inference pipeline"]
         direction TB
-        Census["Census + NEED datasets"]:::dataset
-        IPF["Iterative proportional fitting<br/>synthetic population, per MSOA"]:::func
-        Apply["Apply GP surrogate<br/>required thermal demand T*"]:::func
-        Boundaries["MSOA boundary data"]:::dataset
-        Fit["Bayesian spatial fit<br/>R-INLA BYM2 + RSR (primary)<br/>PyMC NUTS (cross-check)"]:::func
-        Output["Posterior estimates<br/>and uncertainty intervals"]:::output
-
-        Census --> IPF --> Apply
-        Boundaries --> Fit
-        Apply --> Fit --> Output
+        IPF["Iterative proportional fitting<br/>685,300 synthetic households"]:::func
+        Apply["Apply GP surrogate<br/>per-household thermal demand"]:::func
+        Fit["Bayesian spatial model<br/>BYM2 + RSR + PC priors<br/>R-INLA (primary) · PyMC NUTS (cross-check)"]:::func
+        Output["Per-MSOA posterior estimates<br/>T* + credible intervals"]:::output
+        IPF --> Apply --> Fit --> Output
     end
 
+    Archetypes --> LHS
+    Census --> IPF
+    NEED --> IPF
+    EFUS -.->|fabric validation<br/>region-level only| Fit
+    Boundaries --> Fit
     GPTrain -.->|trained surrogate| Apply
 ```
 
@@ -138,6 +145,7 @@ No input data is committed. Sizes below are the real national inputs.
 | MSOA boundaries (Dec 2021) | Open Government Licence v3 | [ONS Open Geography Portal](https://geoportal.statistics.gov.uk/) |
 | Census 2021 housing and tenure (TS044, TS054) | Open Government Licence v3 | [ONS / Nomis](https://www.nomisweb.co.uk/) |
 | NEED gas-consumption panel (50,000-property sample) | DESNZ end-user licence | [gov.uk NEED collection](https://www.gov.uk/government/collections/national-energy-efficiency-data-need-framework) |
+| EFUS 2017 (SN 9434, ~2,632 monitored dwellings) | UK Data Service end-user licence | [UK Data Service](https://doi.org/10.5255/UKDA-SN-9434-1) |
 | EnergyPlus LHS simulation results | Generated locally (~6.8 GB of runs) | `src/inference/lhs_sampler.py` then `src/physics/energyplus_batch.py` |
 
 Place raw inputs under `data/raw/` following the paths in
@@ -162,7 +170,7 @@ python -m src.inference.inla.run_inla        # primary national fit (R-INLA)
 ```
 
 `run_national_pipeline.ps1` wraps the population → surrogate → inference stages
-on Windows. Validation and figure scripts live in `src/research/`:
+on Windows. Pass `--inla` (default) or `--nuts` to select the inference engine. Validation and figure scripts live in `src/research/`:
 
 | Script | Purpose |
 |---|---|

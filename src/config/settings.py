@@ -100,7 +100,7 @@ BASE_TEMP_HDD = 15.5
 # --- STATISTICAL SETTINGS ---
 # MCMC settings for Bayesian ICAR model
 MCMC_SAMPLES = 2000 # Increased for final publication run
-MCMC_TUNE = 2000 # Increased heavily to force hyperparameter convergence
+MCMC_TUNE = 3000 # Extra warmup for mass-matrix adaptation in the rho funnel
 MCMC_CORES = 4 
 MCMC_CHAINS = 4
 
