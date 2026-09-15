@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 from src.physics.energyplus_batch import (
     _bc, calculate_occupants, build_idf_string, generate_task_from_row, generate_tasks_from_df,
     _parse_heating_kwh, run_single, run_lhs_batch, _run_single_axis, read_template_file, write_idf_file,
-    check_placeholder_weather
+    check_placeholder_weather, _validate_weather_files
 )
 
 def test_bc():
@@ -120,6 +120,19 @@ def test_check_placeholder_weather(tmp_path):
     wf.write_bytes(b'a' * 100)
     assert check_placeholder_weather(tmp_path) is False
 
+
+def test_validate_weather_files_rejects_placeholder(tmp_path):
+    wf = tmp_path / "Manchester_2030_ColdSnap.epw"
+    wf.write_bytes(b'a' * 1546562)
+
+    with pytest.raises(ValueError, match="Placeholder weather files"):
+        _validate_weather_files(tmp_path, {"Manchester"})
+
+
+def test_validate_weather_files_rejects_missing_requested_city(tmp_path):
+    with pytest.raises(FileNotFoundError, match="London"):
+        _validate_weather_files(tmp_path, {"London"})
+
 def test_run_single_axis(monkeypatch):
     args = {
         "floor_area": 100.0,
@@ -226,7 +239,7 @@ def test_run_lhs_batch_check_completeness(monkeypatch):
 
 def test_run_lhs_batch(monkeypatch):
     monkeypatch.setattr("src.physics.energyplus_batch.EP_EXE", MagicMock(exists=lambda: True))
-    monkeypatch.setattr("src.physics.energyplus_batch.check_placeholder_weather", lambda p: False)
+    monkeypatch.setattr("src.physics.energyplus_batch._validate_weather_files", lambda p, c: None)
     
     mock_glob = [MagicMock()]
     monkeypatch.setattr("src.physics.energyplus_batch.LHS_DIR", MagicMock(glob=lambda p: mock_glob))

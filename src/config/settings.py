@@ -53,9 +53,11 @@ def setup_logging(name):
 
 # --- MODEL CONSTANTS ---
 RANDOM_SEED = 42
-# For national scale, we limit synthetic samples per MSOA for compute efficiency
-N_HH_SAMPLES_PER_MSOA = 100 
-N_MSOAS = 6840
+# The synthesis emits a fixed, auditable number of synthetic households per
+# covered MSOA. It does not silently subsample the NEED seed or Census tables;
+# those are used as the IPF source/marginals before this explicit expansion.
+N_HH_SAMPLES_PER_MSOA = 100
+N_MSOAS = 6840  # legacy fallback only; production coverage is input-derived
 
 # --- DATA PATHS (Projected) ---
 NEED_MICRODATA_PATH = RAW_DIR / "energy" / "need_2024_official_50k.csv"
@@ -121,12 +123,16 @@ MCMC_MAX_RHAT = 1.01
 MCMC_MAX_DIVERGENCES = 10
 
 # --- FILE PATHS (National) ---
-CENSUS_HOUSING_NATIONAL = RAW_DIR / "census" / "ts044_extracted" / "census2021-ts044-msoa.csv"
+CENSUS_HOUSING_NATIONAL = RAW_DIR / "census" / "ts044_bulk_extracted" / "census2021-ts044-msoa.csv"
+if not CENSUS_HOUSING_NATIONAL.exists():
+    CENSUS_HOUSING_NATIONAL = RAW_DIR / "census" / "ts044_extracted" / "census2021-ts044-msoa.csv"
 if not CENSUS_HOUSING_NATIONAL.exists():
     CENSUS_HOUSING_NATIONAL = RAW_DIR / "census" / "census2021-ts044-msoa.csv"
 CENSUS_TENURE_NATIONAL = RAW_DIR / "census" / "TS054-2021-4-filtered-2026-02-27T03_51_51Z.csv"
 MSOA_CONFOUNDERS_NATIONAL = PROCESSED_DIR / "msoa_confounders_national.csv"
 LOOKUP_PATH = RAW_DIR / "spatial" / "lookup.csv"
+if not LOOKUP_PATH.exists():
+    LOOKUP_PATH = RAW_DIR / "lookup.csv"
 LAD_LOOKUP_PATH = PROCESSED_DIR / "msoa_lad_lookup.csv"
 MSOA_REGION_LOOKUP = PROCESSED_DIR / "msoa_region_lookup.csv"
 BOUNDARIES_PATH = RAW_DIR / "spatial" / "msoa dec 2021 boundaries.gpkg"

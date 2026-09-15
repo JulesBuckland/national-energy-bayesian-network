@@ -4,7 +4,7 @@ import numpy as np
 from unittest.mock import patch, MagicMock
 from src.inference.gp_emulator import (
     load_data, train_gp, plot_validation, save_model, validate_saved, main,
-    evaluate_gp, check_acceptance,
+    evaluate_gp, check_acceptance, prepare_train_test_data,
 )
 import src.inference.gp_emulator as gp_emulator
 
@@ -129,6 +129,22 @@ def test_evaluate_gp_matches_hand_computed_metrics():
     assert metrics["rmse"] == pytest.approx((17 / 3) ** 0.5, abs=1e-9)
     np.testing.assert_array_equal(metrics["y_pred"], [12.0, 18.0, 33.0])
     np.testing.assert_array_equal(metrics["y_std"], [0.5, 0.5, 0.5])
+
+
+def test_prepare_train_test_data_uses_all_rows_by_default():
+    df = pd.DataFrame({column: np.arange(20, dtype=float) for column in gp_emulator.FEATURES})
+    df[gp_emulator.TARGET] = np.arange(20, dtype=float) + 1
+    X_train, X_test, _, y_train, y_test, _ = prepare_train_test_data(df)
+    assert len(y_train) + len(y_test) == len(df)
+    assert len(X_train) == len(y_train)
+    assert len(X_test) == len(y_test)
+
+
+def test_prepare_train_test_data_subsampling_is_explicit():
+    df = pd.DataFrame({column: np.arange(20, dtype=float) for column in gp_emulator.FEATURES})
+    df[gp_emulator.TARGET] = np.arange(20, dtype=float) + 1
+    _, _, _, y_train, _, _ = prepare_train_test_data(df, max_train_points=5)
+    assert len(y_train) == 5
 
 
 def test_check_acceptance_passes_above_threshold():

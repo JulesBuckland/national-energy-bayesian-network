@@ -39,8 +39,19 @@ def calculate_hdd_from_epw(epw_path: Path) -> float:
         raise FileNotFoundError(f"Missing EPW file: {epw_path}. Cannot calculate valid HDD without real weather data.")
 
     try:
-        df = pd.read_csv(epw_path, skiprows=8, header=None, usecols=[6], names=["dry_bulb_temp"])
-        daily_means = extract_daily_means(df['dry_bulb_temp'].values)
+        df = pd.read_csv(
+            epw_path,
+            skiprows=8,
+            header=None,
+            usecols=[6],
+            names=["dry_bulb_temp"],
+        )
+        temperatures = pd.to_numeric(df["dry_bulb_temp"], errors="coerce").to_numpy()
+        if len(temperatures) < 24 or not np.isfinite(temperatures).all():
+            raise ValueError(
+                "EPW must contain at least 24 finite hourly dry-bulb temperatures"
+            )
+        daily_means = extract_daily_means(temperatures)
         return calculate_hdd(daily_means, BASE_TEMP_HDD)
     except Exception as e:
         raise RuntimeError(f"Failed to parse EPW {epw_path}: {e}")

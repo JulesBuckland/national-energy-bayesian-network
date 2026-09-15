@@ -23,8 +23,7 @@ logger = logging.getLogger("LHSSampler")
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent
-PHYSICS_DIR = BASE_DIR / "data" / "raw" / "physics"
+PHYSICS_DIR = RAW_DIR / "physics"
 OUTPUT_DIR = PHYSICS_DIR / "lhs_designs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

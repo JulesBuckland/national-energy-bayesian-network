@@ -3,6 +3,7 @@ import numpy as np
 from tqdm import tqdm
 import logging
 import os
+from src.utils.provenance import assert_unique_keys, assert_keys_subset
 from src.config.settings import (
     NEED_MICRODATA_PATH, RAW_DIR,
     PROCESSED_DIR, SYNTHETIC_POP_FILE, RANDOM_SEED,
@@ -188,13 +189,26 @@ def load_census_marginals() -> tuple:
     ts044_path = CENSUS_HOUSING_NATIONAL
     if not ts044_path.exists():
         raise FileNotFoundError(f"TS044 marginals not found at {ts044_path}")
-    type_marginals = pd.read_csv(ts044_path).set_index('geography code')
+    # Use the complete, deduplicated bulk extract.  The older extracted CSV
+    # contains three duplicated geography codes caused by six named MSOAs being
+    # represented twice; accepting that file would make ``.loc`` return a
+    # DataFrame and silently choose the first row below.
+    type_marginals = pd.read_csv(ts044_path)
+    assert_unique_keys(type_marginals, ["geography code"], label="Census TS044")
+    type_marginals = type_marginals.set_index('geography code')
+
 
     ts054_path = CENSUS_TENURE_NATIONAL
     if not ts054_path.exists():
         raise FileNotFoundError(f"TS054 marginals not found at {ts054_path}")
     tenure_raw = pd.read_csv(ts054_path)
-
+    assert_keys_subset(
+        type_marginals.reset_index().rename(columns={"geography code": "msoa_cd"}),
+        tenure_raw.rename(columns={"Middle layer Super Output Areas Code": "msoa_cd"}),
+        "msoa_cd",
+        required_label="Census TS044",
+        available_label="Census TS054",
+    )
     def map_tenure(code):
         if code in [0, 1]: return 'Owned'
         if code in [3, 4]: return 'Social'
@@ -212,14 +226,23 @@ def load_census_marginals() -> tuple:
     if not MSOA_CONFOUNDERS_NATIONAL.exists():
         raise FileNotFoundError(f"Confounders not found at {MSOA_CONFOUNDERS_NATIONAL}")
     confounders = pd.read_csv(MSOA_CONFOUNDERS_NATIONAL)
+    assert_unique_keys(confounders, ["msoa_cd"], label="MSOA confounders")
+    assert_keys_subset(
+        confounders,
+        type_marginals.reset_index().rename(columns={"geography code": "msoa_cd"}),
+        "msoa_cd",
+        required_label="MSOA confounders",
+        available_label="Census TS044",
+    )
     if len(confounders) < 10:
         confounders = confounders.assign(decile=5)
     else:
         confounders = confounders.assign(
             decile=pd.qcut(
-                confounders['income_dep_score'], 10, labels=range(1, 11)
+                confounders['income_dep_score'], 10, labels=range(1, 11), duplicates="drop"
             ).astype(int)
         )
+
     confounders = confounders.drop_duplicates(subset=['msoa_cd'])
     confounders_idx = confounders.set_index('msoa_cd')   # O(1) lookup
 
@@ -313,14 +336,10 @@ def run_national_synthesis():
         if msoa_code not in type_marginals.index:
             continue
         m_type = type_marginals.loc[msoa_code]
-        if isinstance(m_type, pd.DataFrame):
-            m_type = m_type.iloc[0]
 
         if msoa_code not in tenure_marginals.index:
             continue
         m_tenure = tenure_marginals.loc[msoa_code]
-        if isinstance(m_tenure, pd.DataFrame):
-            m_tenure = m_tenure.iloc[0]
 
         if msoa_code not in confounders_idx.index:
             continue
