@@ -32,6 +32,10 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FIXTURE_RAW_DIR = BASE_DIR / "tests" / "fixtures" / "raw"
+FIXTURE_SENTINELS = (
+    FIXTURE_RAW_DIR / "energy" / "need_2024_official_50k.csv",
+    FIXTURE_RAW_DIR / "physics" / "lhs_results_combined.csv",
+)
 
 NO_FIXTURES_REASON = (
     "tests/fixtures/raw/ is absent. These inputs are derived from licensed data "
@@ -46,7 +50,14 @@ NO_R_INLA_REASON = (
 
 
 def fixtures_available() -> bool:
-    return FIXTURE_RAW_DIR.is_dir() and any(FIXTURE_RAW_DIR.iterdir())
+    """Return true only when the complete fixture set needed by integration tests exists.
+
+    A checkout can contain an ignored or partially-created ``raw`` directory
+    without containing either licensed sentinel input. Treating any directory
+    entry as sufficient caused CI to run data-dependent tests and fail with a
+    misleading FileNotFoundError.
+    """
+    return all(path.is_file() for path in FIXTURE_SENTINELS)
 
 
 @functools.lru_cache(maxsize=1)
