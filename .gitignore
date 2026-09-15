@@ -47,6 +47,7 @@ scratch_scripts/
 
 # --- Private research material ---
 /manuscript/
+/applications/
 /docs/
 /papers/
 /archive/

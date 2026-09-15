@@ -29,11 +29,12 @@ from typing import Dict, Any, List, Tuple
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("EnergyPlusLHSBatch")
 
+from src.config.settings import RAW_DIR
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-BASE_DIR     = Path(__file__).resolve().parent.parent
-PHYSICS_DIR  = BASE_DIR / "data" / "raw" / "physics"
+PHYSICS_DIR  = RAW_DIR / "physics"
 LHS_DIR      = PHYSICS_DIR / "lhs_designs"
 RESULTS_DIR  = PHYSICS_DIR / "lhs_results"
 SIM_DIR      = PHYSICS_DIR / "lhs_energyplus_sims"
@@ -240,10 +241,27 @@ def run_single(args: dict) -> dict:
     return result
 
 def check_placeholder_weather(physics_dir: Path) -> bool:
-    for wf in physics_dir.glob("*.epw"):
-        if wf.stat().st_size == 1546562:
-            return True
-    return False
+    """Return whether a known placeholder EPW file is present."""
+    return any(wf.stat().st_size == 1546562 for wf in physics_dir.glob("*.epw"))
+
+
+def _validate_weather_files(physics_dir: Path, cities: set[str]) -> None:
+    """Fail before scheduling simulations if any requested weather input is bad."""
+    if check_placeholder_weather(physics_dir):
+        raise ValueError(
+            "Placeholder weather files (1,546,562 bytes) detected in "
+            f"{physics_dir}; download real EPW files before running simulations."
+        )
+
+    missing = [
+        city for city in sorted(cities)
+        if not (physics_dir / f"{city}_2030_ColdSnap.epw").exists()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            "Missing EPW weather files for: " + ", ".join(missing)
+        )
+
 
 # ---------------------------------------------------------------------------
 # Main
@@ -257,9 +275,6 @@ def run_lhs_batch(max_workers: int = 6, check_completeness: bool = False, resume
     if not EP_EXE.exists():
         logger.error(f"EnergyPlus executable not found at {EP_EXE}")
         return
-        
-    if check_placeholder_weather(PHYSICS_DIR):
-        logger.error("ERROR: Placeholder weather files (1,546,562 bytes) detected in data/raw/physics/! You must download real .epw files before running simulations.")
 
     logger.info(f"Found {len(design_files)} archetype design files.")
 
@@ -273,6 +288,19 @@ def run_lhs_batch(max_workers: int = 6, check_completeness: bool = False, resume
         total = len(all_tasks)
         logger.info(f"Completeness: {done}/{total} ({100*done/total:.1f}%)")
         return
+
+    # Validate all requested weather inputs before launching any workers. The
+    # previous code only logged a placeholder warning and continued, allowing a
+    # complete-looking result file to contain failed/zero-demand runs.
+    requested_cities = {
+        str(task["city"]).strip()
+        for task in all_tasks
+        if task.get("city") is not None and not pd.isna(task.get("city"))
+    }
+    requested_cities.discard("")
+    if not requested_cities:
+        requested_cities.add("Manchester")
+    _validate_weather_files(PHYSICS_DIR, requested_cities)
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(run_single, task) for task in all_tasks]

@@ -7,32 +7,62 @@ import os
 import sys
 import logging
 import gc
+from sklearn.model_selection import GroupShuffleSplit
 
 # Add root to path
 sys.path.append(os.getcwd())
-from src.config.settings import PROCESSED_DIR, HEATING_DEFICIT_FILE, RANDOM_SEED
+from src.config.settings import (
+    PROCESSED_DIR,
+    HEATING_DEFICIT_FILE,
+    RANDOM_SEED,
+    LOOKUP_PATH,
+)
 
 # Silence spam
 logging.getLogger("pymc").setLevel(logging.ERROR)
 logging.getLogger("arviz").setLevel(logging.ERROR)
 
+def make_spatial_holdout(df: pd.DataFrame, lookup: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split whole LADs, rather than individual MSOAs, into train and test.
+
+    A row-wise random split leaks neighbouring areas into both partitions and
+    is not a spatial generalisation test.  LAD is the smallest geography
+    available in the checked-in lookup that is shared by the model output and
+    provides a deterministic, auditable group boundary.
+    """
+    required = {"msoa21cd", "ladnm"}
+    missing = required - set(lookup.columns)
+    if missing:
+        raise ValueError(f"Spatial lookup is missing columns: {sorted(missing)}")
+    groups = lookup[["msoa21cd", "ladnm"]].drop_duplicates("msoa21cd")
+    merged = df.merge(groups, on="msoa21cd", how="left", validate="one_to_one")
+    if merged["ladnm"].isna().any():
+        raise ValueError("Spatial holdout lookup does not cover every model MSOA")
+
+    splitter = GroupShuffleSplit(n_splits=1, test_size=0.10, random_state=RANDOM_SEED)
+    train_idx, test_idx = next(splitter.split(merged, groups=merged["ladnm"]))
+    train_df = merged.iloc[train_idx].copy()
+    test_df = merged.iloc[test_idx].copy()
+    if set(train_df["ladnm"]) & set(test_df["ladnm"]):
+        raise AssertionError("Spatial holdout leaked an LAD across train and test")
+    return train_df, test_df
+
+
 def run_spatial_holdout():
-    print("--- V10: SPATIAL GENERALIZATION HOLDOUT TEST (10%) ---")
+    print("--- V10: LAD-grouped spatial generalization holdout test (10%) ---")
     
     deficit_path = PROCESSED_DIR / HEATING_DEFICIT_FILE
     conf_path = PROCESSED_DIR / "msoa_confounders_national.csv"
     
-    df = pd.read_csv(deficit_path).merge(pd.read_csv(conf_path), left_on='msoa21cd', right_on='msoa_cd')
-    
-    # 1. 90/10 Split
-    np.random.seed(RANDOM_SEED)
-    mask = np.random.rand(len(df)) < 0.9
-    train_df = df[mask].copy()
-    test_df = df[~mask].copy()
+    df = pd.read_csv(deficit_path).merge(
+        pd.read_csv(conf_path), left_on="msoa21cd", right_on="msoa_cd", validate="one_to_one"
+    )
+    lookup = pd.read_csv(LOOKUP_PATH, usecols=["msoa21cd", "ladnm"])
+    train_df, test_df = make_spatial_holdout(df, lookup)
     
     print(f"Total MSOAs: {len(df)}")
-    print(f"Training Set: {len(train_df)}")
-    print(f"Holdout Set: {len(test_df)}")
+    print(f"Training Set: {len(train_df)} MSOAs across {train_df['ladnm'].nunique()} LADs")
+    print(f"Holdout Set: {len(test_df)} MSOAs across {test_df['ladnm'].nunique()} LADs")
     
     # Pre-process Training
     y_obs_train = np.log(train_df['empirical_gas_kwh'].values)
@@ -96,10 +126,11 @@ def run_spatial_holdout():
     # Save Report
     report_path = PROCESSED_DIR / "holdout_results.txt"
     with open(report_path, "w") as f:
-        f.write("V10 Methodological Audit: 10% Spatial Holdout Test\n")
-        f.write("==================================================\n\n")
-        f.write(f"Training Set: {len(train_df)} MSOAs (90%)\n")
-        f.write(f"Holdout Set: {len(test_df)} MSOAs (10%)\n\n")
+        f.write("V10 Methodological Audit: 10% LAD-Grouped Spatial Holdout Test\n")
+        f.write("===============================================================\n\n")
+        f.write(f"Training Set: {len(train_df)} MSOAs across {train_df['ladnm'].nunique()} LADs\n")
+        f.write(f"Holdout Set: {len(test_df)} MSOAs across {test_df['ladnm'].nunique()} LADs\n")
+        f.write("No LAD occurs in both partitions.\n\n")
         f.write("Global Posteriors (Trained on 90%):\n")
         f.write(f"  Beta_th: {beta_th_mean:.3f}\n")
         f.write(f"  Beta_inc: {beta_inc_mean:.3f}\n\n")

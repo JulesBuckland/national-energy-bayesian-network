@@ -42,6 +42,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("GPEmulator")
 
 from src.config import settings as config
+from src.utils.provenance import file_record
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -82,16 +83,16 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-def prepare_train_test_data(df: pd.DataFrame, max_train_points: int = 500):
-    """Split, subsample, and scale features. Returns
-    (X_train_s, X_test_s, X_test, y_train, y_test, scaler) — X_test is kept
-    unscaled (original feature units) alongside the scaled X_test_s, since
-    callers/plots may want either.
+def prepare_train_test_data(df: pd.DataFrame, max_train_points: int | None = None):
+    """Split and scale the complete valid simulation table.
 
-    Subsampling caps training set size to prevent an O(n^2) covariance-matrix
-    OOM crash. The two train_test_split calls (and their random_state) must
-    stay in this exact order: reordering them would change which points end
-    up in the training set even though RANDOM_SEED is unchanged.
+    Every valid row is assigned once to the held-out test partition or the
+    training partition.  ``max_train_points`` is an explicit, opt-in diagnostic
+    escape hatch for memory-constrained experiments; it is deliberately
+    ``None`` by default so a production run cannot silently discard EnergyPlus
+    simulations before fitting.
+
+    Returns ``(X_train_s, X_test_s, X_test, y_train, y_test, scaler)``.
     """
     X = df[FEATURES].values.astype(float)
     y = df[TARGET].values.astype(float)
@@ -100,11 +101,19 @@ def prepare_train_test_data(df: pd.DataFrame, max_train_points: int = 500):
         X, y, test_size=TEST_FRACTION, random_state=RANDOM_SEED
     )
 
-    if len(X_train) > max_train_points:
-        logger.info(f"Subsampling training set from {len(X_train)} to {max_train_points} to prevent RAM crash.")
-        X_train, _, y_train, _ = train_test_split(
-            X_train, y_train, train_size=max_train_points, random_state=RANDOM_SEED
-        )
+    if max_train_points is not None:
+        if max_train_points <= 0:
+            raise ValueError("max_train_points must be positive when supplied")
+        if len(X_train) > max_train_points:
+            logger.warning(
+                "Explicit diagnostic subsampling requested: using %d of %d "
+                "training rows; this is not a full-data production fit.",
+                max_train_points,
+                len(X_train),
+            )
+            X_train, _, y_train, _ = train_test_split(
+                X_train, y_train, train_size=max_train_points, random_state=RANDOM_SEED
+            )
 
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
@@ -172,10 +181,17 @@ def train_gp(df: pd.DataFrame):
         "r2": metrics["r2"],
         "mae_kwh_year": metrics["mae"],
         "rmse_kwh_year": metrics["rmse"],
+        "n_valid": int(len(df)),
         "n_train": int(len(X_train_s)),
         "n_test": int(len(X_test_s)),
+        "test_fraction": float(TEST_FRACTION),
         "kernel": str(gp.kernel_),
         "acceptance_met": bool(metrics["r2"] >= config.GP_ACCEPTANCE_R2),
+        "source": (
+            file_record(COMBINED_CSV, role="EnergyPlus LHS results", rows=len(df))
+            if COMBINED_CSV.exists()
+            else {"path": str(COMBINED_CSV), "role": "EnergyPlus LHS results", "rows": int(len(df))}
+        ),
     }
     with open(STATS_PATH, "w") as f:
         json.dump(stats, f, indent=2)
