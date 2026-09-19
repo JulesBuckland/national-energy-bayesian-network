@@ -135,7 +135,8 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list = None) -> dict:
             T_pred = np.maximum(0.0, np.concatenate(T_preds))
             T_std = np.concatenate(T_stds)
             df = df.assign(theoretical_gas_kwh=T_pred * 277.778, T_std_kwh=T_std * 277.778)
-            assert (df["theoretical_gas_kwh"] >= 0).all(), "FATAL: Negative theoretical gas prediction detected!"
+            if not (df["theoretical_gas_kwh"] >= 0).all():
+                raise ValueError("Negative theoretical gas prediction detected after GP emulation.")
             log_memory("Post-GP Prediction")
     else:
         logger.warning(f"GP emulator not found at {GP_MODEL_PATH}. Falling back to CSV baseline.")
@@ -161,13 +162,15 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list = None) -> dict:
 
     initial_len = len(msoa_stats)
     msoa_stats = msoa_stats.dropna(subset=["y_mean", "T_mean", "income_dep_score"])
-    assert len(msoa_stats) / initial_len > 0.99, "CRITICAL: Spatial merge dropped >1% of data!"
+    if len(msoa_stats) / initial_len <= 0.99:
+        raise ValueError(f"Spatial merge dropped {initial_len - len(msoa_stats)} of {initial_len} MSOAs (>1% loss).")
     logger.info(f"Aggregated {len(df)} households into {len(msoa_stats)} MSOAs.")
 
     gdf = gpd.read_file(BOUNDARIES_PATH)
     gdf = gdf[gdf["MSOA21CD"].isin(msoa_stats["msoa21cd"])].sort_values("MSOA21CD").reset_index(drop=True)
     msoa_stats = msoa_stats.sort_values("msoa21cd").reset_index(drop=True)
-    assert len(gdf) == len(msoa_stats), f"FATAL: Dimension mismatch! GDF has {len(gdf)} but stats has {len(msoa_stats)}"
+    if len(gdf) != len(msoa_stats):
+        raise ValueError(f"Dimension mismatch: GDF has {len(gdf)} but stats has {len(msoa_stats)}.")
     if len(gdf) == 0:
         raise ValueError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
 

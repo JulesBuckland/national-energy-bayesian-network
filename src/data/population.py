@@ -99,8 +99,10 @@ def load_and_clean_seed_data() -> pd.DataFrame:
     })
 
     seed_data = seed_data.dropna(subset=['empirical_gas_kwh', 'empirical_elec_kwh'])
-    assert not seed_data['empirical_gas_kwh'].isna().any(), "FATAL: Missing empirical gas data!"
-    assert not seed_data['empirical_elec_kwh'].isna().any(), "FATAL: Missing empirical elec data!"
+    if seed_data['empirical_gas_kwh'].isna().any():
+        raise ValueError("Missing empirical gas data after dropna — data integrity failure.")
+    if seed_data['empirical_elec_kwh'].isna().any():
+        raise ValueError("Missing empirical elec data after dropna — data integrity failure.")
 
     # Total Thermal Load Modeling: Handle electric heating in flats without gas
     # We estimate weather-dependent electricity by subtracting a baseload.
@@ -291,7 +293,8 @@ def filter_msoas_for_test_mode(msoa_codes: np.ndarray, region_lookup: dict) -> n
         target_msoas = lad_lookup[lad_lookup['ladnm'].str.contains(target_lad, case=False, na=False)]['msoa21cd'].unique()
 
         msoa_codes = np.intersect1d(msoa_codes, target_msoas)
-        assert len(msoa_codes) > 0, f"FATAL: E2E test failed. No MSOAs found for LAD '{target_lad}'!"
+        if len(msoa_codes) == 0:
+            raise ValueError(f"E2E test failed: no MSOAs found for LAD '{target_lad}'.")
         logger.info(f"*** Filtered down to {len(msoa_codes)} MSOAs for {target_lad} ***")
         return msoa_codes
 
@@ -300,11 +303,110 @@ def filter_msoas_for_test_mode(msoa_codes: np.ndarray, region_lookup: dict) -> n
         logger.info(f"*** REGIONAL PILOT: Filtering MSOAs for region '{target_region}' ***")
         region_msoas = [m for m, r in region_lookup.items() if target_region.lower() in r.lower()]
         msoa_codes = np.intersect1d(msoa_codes, region_msoas)
-        assert len(msoa_codes) > 0, f"FATAL: No MSOAs found for region '{target_region}'!"
+        if len(msoa_codes) == 0:
+            raise ValueError(f"No MSOAs found for region '{target_region}'.")
         logger.info(f"*** Filtered down to {len(msoa_codes)} MSOAs for {target_region} ***")
         return msoa_codes
 
     return msoa_codes
+
+
+def _ipf_reweight(
+    weights: np.ndarray, pt_masks: dict, tenure_masks: dict,
+    target_type: dict, target_tenure: dict, n_iter: int = 5,
+) -> np.ndarray:
+    """Run iterative proportional fitting on numpy weight arrays."""
+    for _ in range(n_iter):
+        for t in PT_TYPES:
+            target_val = target_type.get(t, 0)
+            mask = pt_masks[t]
+            curr = weights[mask].sum()
+            if curr > 0 and target_val > 0:
+                weights = np.where(mask, weights * (target_val / curr), weights)
+        for t in TENURE_TYPES:
+            target_val = target_tenure.get(t, 0)
+            mask = tenure_masks[t]
+            curr = weights[mask].sum()
+            if curr > 0 and target_val > 0:
+                weights = np.where(mask, weights * (target_val / curr), weights)
+    return weights
+
+
+def _assign_physical_params(
+    chosen: np.ndarray, seed_pt: np.ndarray, seed_age: np.ndarray,
+    msoa_hdd: float, rng: np.random.RandomState,
+) -> dict:
+    """Generate per-household physical parameters for the GP emulator."""
+    n_hh = len(chosen)
+    pt_chosen = seed_pt[chosen]
+    age_chosen = seed_age[chosen]
+
+    area_arr = np.array([
+        ARCHETYPE_AREA_MEAN.get(age_chosen[i], {}).get(pt_chosen[i], 80.0)
+        for i in range(n_hh)
+    ], dtype=float)
+    floor_area_arr = np.clip(area_arr * (1.0 + rng.normal(0, _AREA_CV, n_hh)), 20.0, None)
+
+    wall_u_nom = np.array([
+        CONSTRUCTION_SPECS.get(age_chosen[i], {"wall_u": 1.0})["wall_u"]
+        for i in range(n_hh)
+    ], dtype=float)
+    wall_u_arr = np.clip(wall_u_nom * (1.0 + rng.normal(0, _PHYS_CV, n_hh)), 0.10, 3.0)
+
+    ach_nom = np.array([
+        CONSTRUCTION_SPECS.get(age_chosen[i], {"ach": 1.0})["ach"]
+        for i in range(n_hh)
+    ], dtype=float)
+    ach_arr = np.clip(ach_nom * (1.0 + rng.normal(0, _PHYS_CV, n_hh)), 0.15, 3.0)
+
+    wwr_nom = np.array([WWR_NOMINAL.get(pt_chosen[i], 0.15) for i in range(n_hh)], dtype=float)
+    wwr_arr = np.clip(wwr_nom * (1.0 + rng.normal(0, _PHYS_CV, n_hh)), 0.05, 0.40)
+
+    form_code_arr = np.array([FORM_CODE.get(pt_chosen[i], 3) for i in range(n_hh)], dtype=int)
+
+    return {
+        "floor_area": floor_area_arr,
+        "wall_u": wall_u_arr,
+        "ach": ach_arr,
+        "wwr": wwr_arr,
+        "form_code": form_code_arr,
+        "hdd": np.full(n_hh, msoa_hdd, dtype=float),
+    }
+
+
+def _validate_and_export(final_synthetic_pop: pd.DataFrame, msoa_codes) -> None:
+    """Run Pandera validation and export to parquet."""
+    from src.utils.data_contracts import population_schema
+    from src.utils.tracker import log_distribution
+
+    expected_msoas = len(msoa_codes)
+    actual_msoas = final_synthetic_pop['msoa21cd'].nunique()
+    logger.info(f"Adversarial Check: Synthesized {actual_msoas} out of {expected_msoas} expected MSOAs.")
+    if actual_msoas < expected_msoas * 0.99:
+        raise ValueError(
+            f"Silent MSOA drop detected: {expected_msoas - actual_msoas} MSOAs lost during synthesis."
+        )
+
+    logger.info("Validating synthetic population against data contract...")
+    final_synthetic_pop = population_schema.validate(final_synthetic_pop)
+
+    log_distribution(final_synthetic_pop, 'empirical_thermal_kwh', '01_pop_synthesis_final_output', logger)
+
+    target_lad = os.environ.get("E2E_TARGET_LAD")
+    target_region = os.environ.get("E2E_TARGET_REGION")
+    if target_lad or target_region:
+        if final_synthetic_pop[['floor_area', 'wall_u', 'ach']].isna().any().any():
+            raise ValueError("GP emulator inputs contain NaNs — synthesis produced incomplete records.")
+        e2e_dir = PROCESSED_DIR / "tests" / "e2e_outputs"
+        e2e_dir.mkdir(parents=True, exist_ok=True)
+        output_path = e2e_dir / SYNTHETIC_POP_FILE
+    else:
+        output_path = PROCESSED_DIR / SYNTHETIC_POP_FILE
+
+    print(f"Exporting {len(final_synthetic_pop)} rows to Parquet...")
+    final_synthetic_pop.to_parquet(output_path, index=False)
+    logger.info(f"Synthetic Population saved to {output_path}")
+    logger.info(f"Total Households: {len(final_synthetic_pop)}")
 
 
 def run_national_synthesis():
@@ -364,30 +466,8 @@ def run_national_synthesis():
         }
         target_tenure = m_tenure.to_dict()
 
-        # ------------------------------------------------------------------
-        # IPF using numpy arrays — avoids seed_q.copy() (expensive for
-        # large seed DataFrames) and avoids groupby inside the loop.
-        # Pre-computed boolean masks (pt_masks, tenure_masks) are reused
-        # across all MSOAs; only the weights array is reallocated.
-        # ------------------------------------------------------------------
         weights = np.where(seed_imd == decile, 1.0, 0.05)
-
-        for _ in range(5):
-            # Property-type adjustment
-            for t in PT_TYPES:
-                target_val = target_type.get(t, 0)
-                mask = pt_masks[t]
-                curr = weights[mask].sum()
-                if curr > 0 and target_val > 0:
-                    weights = np.where(mask, weights * (target_val / curr), weights)
-
-            # Tenure adjustment
-            for t in TENURE_TYPES:
-                target_val = target_tenure.get(t, 0)
-                mask = tenure_masks[t]
-                curr = weights[mask].sum()
-                if curr > 0 and target_val > 0:
-                    weights = np.where(mask, weights * (target_val / curr), weights)
+        weights = _ipf_reweight(weights, pt_masks, tenure_masks, target_type, target_tenure)
 
         # 5 % weight cap (V15 Integrity Plan)
         total_w = weights.sum()
@@ -413,109 +493,26 @@ def run_national_synthesis():
                 # Fallback to with-replacement if the filtered pool is too small
                 chosen = rng.choice(len(seed_q), size=N_HH_SAMPLES_PER_MSOA, replace=True, p=probs)
 
-        # --------------------------------------------------------------------
-        # Per-household physical parameters for GP emulator
-        # Draw from truncated normal around archetype-nominal values (CV=10%)
-        # so that within-archetype variance is captured by the emulator.
-        # --------------------------------------------------------------------
-        n_hh  = len(chosen)
-        rng2  = np.random.RandomState(RANDOM_SEED + msoa_idx + 1)
-
-        pt_chosen  = seed_pt[chosen]
-        age_chosen = seed_age[chosen]
-
-        # Floor area: look up archetype mean, then add Gaussian noise
-        area_arr = np.array([
-            ARCHETYPE_AREA_MEAN.get(age_chosen[i], {}).get(pt_chosen[i], 80.0)
-            for i in range(n_hh)
-        ], dtype=float)
-        floor_area_arr = area_arr * (1.0 + rng2.normal(0, _AREA_CV, n_hh))
-        floor_area_arr = np.clip(floor_area_arr, 20.0, None)
-
-        # Wall U-value: age-band nominal + Gaussian noise
-        wall_u_nom = np.array([
-            CONSTRUCTION_SPECS.get(age_chosen[i], {"wall_u": 1.0})["wall_u"]
-            for i in range(n_hh)
-        ], dtype=float)
-        wall_u_arr = wall_u_nom * (1.0 + rng2.normal(0, _PHYS_CV, n_hh))
-        wall_u_arr = np.clip(wall_u_arr, 0.10, 3.0)
-
-        # ACH: age-band nominal + Gaussian noise
-        ach_nom = np.array([
-            CONSTRUCTION_SPECS.get(age_chosen[i], {"ach": 1.0})["ach"]
-            for i in range(n_hh)
-        ], dtype=float)
-        ach_arr = ach_nom * (1.0 + rng2.normal(0, _PHYS_CV, n_hh))
-        ach_arr = np.clip(ach_arr, 0.15, 3.0)
-
-        # WWR: form nominal + Gaussian noise
-        wwr_nom = np.array([WWR_NOMINAL.get(pt_chosen[i], 0.15) for i in range(n_hh)], dtype=float)
-        wwr_arr = wwr_nom * (1.0 + rng2.normal(0, _PHYS_CV, n_hh))
-        wwr_arr = np.clip(wwr_arr, 0.05, 0.40)
-
-        # Form code: deterministic lookup
-        form_code_arr = np.array([FORM_CODE.get(pt_chosen[i], 3) for i in range(n_hh)], dtype=int)
+        rng2 = np.random.RandomState(RANDOM_SEED + msoa_idx + 1)
+        phys = _assign_physical_params(chosen, seed_pt, seed_age, msoa_hdd, rng2)
 
         all_results.append(pd.DataFrame({
             'msoa21cd':             msoa_code,
-            'property_type':        pt_chosen,
-            'property_age':         age_chosen,
+            'property_type':        seed_pt[chosen],
+            'property_age':         seed_age[chosen],
             'property_area_band':   seed_area_band[chosen],
             'tenure':               seed_tenure[chosen],
             'empirical_thermal_kwh': seed_thermal[chosen],
             'empirical_gas_kwh':    seed_gas[chosen],
             'IMD_BAND_ENG':         seed_imd[chosen],
-            # GP emulator feature columns
-            'floor_area':           floor_area_arr,
-            'wall_u':               wall_u_arr,
-            'ach':                  ach_arr,
-            'wwr':                  wwr_arr,
-            'form_code':            form_code_arr,
-            'hdd':                  np.full(n_hh, msoa_hdd, dtype=float),
+            **phys,
         }))
 
     if not all_results:
-        raise ValueError("FATAL: No results generated — all MSOAs were skipped during synthesis.")
+        raise ValueError("No results generated — all MSOAs were skipped during synthesis.")
 
     final_synthetic_pop = pd.concat(all_results, ignore_index=True)
-
-    # Guard against silent MSOA drops
-    expected_msoas = len(msoa_codes)
-    actual_msoas = final_synthetic_pop['msoa21cd'].nunique()
-    logger.info(f"Adversarial Check: Synthesized {actual_msoas} out of {expected_msoas} expected MSOAs.")
-    if actual_msoas < expected_msoas * 0.99: # Allowing max 1% missing due to empty marginals
-        raise ValueError(f"FATAL: Silent MSOA drop detected! Dropped {expected_msoas - actual_msoas} MSOAs during synthesis!")
-
-    # Apply Pandera Data Contract to enforce absolute statistical bounds
-    from src.utils.data_contracts import population_schema
-    logger.info("Validating synthetic population against absolute data contract...")
-    final_synthetic_pop = population_schema.validate(final_synthetic_pop)
-
-    # -------------------------------------------------------------
-    # DATA LINEAGE TRACKING
-    # -------------------------------------------------------------
-    from src.utils.tracker import log_distribution
-    log_distribution(final_synthetic_pop, 'empirical_thermal_kwh', '01_pop_synthesis_final_output', logger)
-
-    # Parquet Export Validations
-    print(f"Exporting {len(final_synthetic_pop)} rows to Parquet...")
-
-    # E2E ROUTING & ASSERTIONS
-    target_lad = os.environ.get("E2E_TARGET_LAD")
-    target_region = os.environ.get("E2E_TARGET_REGION")
-    if target_lad or target_region:
-        # Guarantee GP Emulator features are intact
-        assert not final_synthetic_pop[['floor_area', 'wall_u', 'ach']].isna().any().any(), "FATAL: GP Emulator inputs contain NaNs!"
-        # Route to E2E output directory to avoid overwriting national data
-        e2e_dir = PROCESSED_DIR / "tests" / "e2e_outputs"
-        e2e_dir.mkdir(parents=True, exist_ok=True)
-        output_path = e2e_dir / SYNTHETIC_POP_FILE
-    else:
-        output_path = PROCESSED_DIR / SYNTHETIC_POP_FILE
-
-    final_synthetic_pop.to_parquet(output_path, index=False)
-    logger.info(f"Synthetic Population saved to {output_path}")
-    logger.info(f"Total Households: {len(final_synthetic_pop)}")
+    _validate_and_export(final_synthetic_pop, msoa_codes)
 
 if __name__ == "__main__":
     run_national_synthesis()

@@ -32,9 +32,12 @@ def build_inla_node_frame(
         DataFrame with columns [id, T_var, income_z, theory_log, y_obs].
     """
     n = len(y_obs)
-    assert len(T_var) == n, f"T_var length {len(T_var)} != y_obs length {n}"
-    assert len(income_z) == n, f"income_z length {len(income_z)} != y_obs length {n}"
-    assert len(theory_log) == n, f"theory_log length {len(theory_log)} != y_obs length {n}"
+    if len(T_var) != n:
+        raise ValueError(f"T_var length {len(T_var)} != y_obs length {n}")
+    if len(income_z) != n:
+        raise ValueError(f"income_z length {len(income_z)} != y_obs length {n}")
+    if len(theory_log) != n:
+        raise ValueError(f"theory_log length {len(theory_log)} != y_obs length {n}")
     return pd.DataFrame(
         {
             "id": np.arange(1, n + 1, dtype=np.int64),
@@ -58,8 +61,10 @@ def build_inla_edge_frame(node1: np.ndarray, node2: np.ndarray) -> pd.DataFrame:
     """
     node1 = np.asarray(node1)
     node2 = np.asarray(node2)
-    assert node1.ndim == 1 and node2.ndim == 1, "edge arrays must be 1D"
-    assert node1.shape == node2.shape, "node1/node2 must have matching shapes"
+    if node1.ndim != 1 or node2.ndim != 1:
+        raise ValueError("Edge arrays must be 1D.")
+    if node1.shape != node2.shape:
+        raise ValueError("node1/node2 must have matching shapes.")
     return pd.DataFrame(
         {
             "node1": (node1 + 1).astype(np.int64),
