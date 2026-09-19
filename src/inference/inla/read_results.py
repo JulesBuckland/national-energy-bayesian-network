@@ -31,8 +31,10 @@ def read_inla_fixed_effects(path: Path) -> pd.DataFrame:
     """Reads inla_fixed_effects.csv (INLA's summary.fixed, one row per
     fixed effect: '(Intercept)' = beta_th, 'income_z' = beta_inc)."""
     df = pd.read_csv(path, index_col=0)
-    assert "(Intercept)" in df.index, "expected an '(Intercept)' row (beta_th) in fixed effects"
-    assert "income_z" in df.index, "expected an 'income_z' row (beta_inc) in fixed effects"
+    if "(Intercept)" not in df.index:
+        raise ValueError("Expected an '(Intercept)' row (beta_th) in fixed effects.")
+    if "income_z" not in df.index:
+        raise ValueError("Expected an 'income_z' row (beta_inc) in fixed effects.")
     return df
 
 
@@ -47,7 +49,8 @@ def read_inla_random_effects(path: Path, n: int) -> dict:
         column names, passed through unchanged), n rows each.
     """
     df = pd.read_csv(path)
-    assert len(df) == 2 * n, f"expected {2 * n} rows (2n for bym2), got {len(df)}"
+    if len(df) != 2 * n:
+        raise ValueError(f"Expected {2 * n} rows (2n for bym2), got {len(df)}.")
     return {
         "b": df.iloc[:n].reset_index(drop=True),
         "u": df.iloc[n:].reset_index(drop=True),
@@ -57,7 +60,8 @@ def read_inla_random_effects(path: Path, n: int) -> dict:
 def read_inla_hyperpar_transformed(path: Path) -> dict:
     """Reads the single-row rho/sigma_spatial/sigma_err summary."""
     df = pd.read_csv(path)
-    assert len(df) == 1, f"expected exactly one row, got {len(df)}"
+    if len(df) != 1:
+        raise ValueError(f"Expected exactly one row in hyperpar, got {len(df)}.")
     return df.iloc[0].to_dict()
 
 
@@ -67,7 +71,8 @@ def read_inla_cpo(path: Path) -> pd.DataFrame:
 
 def read_inla_ic(path: Path) -> dict:
     df = pd.read_csv(path)
-    assert len(df) == 1
+    if len(df) != 1:
+        raise ValueError(f"Expected exactly one row in IC, got {len(df)}.")
     return df.iloc[0].to_dict()
 
 
@@ -91,9 +96,10 @@ def build_spatial_effect_summary_from_inla(random_effects_b: pd.DataFrame, msoa_
             already relies on -- see that module's docstring).
     """
     n = len(msoa_codes)
-    assert len(random_effects_b) == n, (
-        f"random_effects_b has {len(random_effects_b)} rows but {n} MSOA codes were given"
-    )
+    if len(random_effects_b) != n:
+        raise ValueError(
+            f"random_effects_b has {len(random_effects_b)} rows but {n} MSOA codes were given."
+        )
     return pd.DataFrame(
         {
             "msoa21cd": msoa_codes,

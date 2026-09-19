@@ -27,8 +27,10 @@ def compute_icar_scaling_factor(node1: np.ndarray, node2: np.ndarray, n_nodes: i
         The geometric mean of the diagonal of the (jitter-perturbed)
         generalized inverse of the ICAR precision matrix.
     """
-    assert node1.shape == node2.shape
-    assert node1.ndim == 1
+    if node1.shape != node2.shape:
+        raise ValueError("node1 and node2 must have matching shapes.")
+    if node1.ndim != 1:
+        raise ValueError("Edge arrays must be 1D.")
     node1 = node1.astype(np.int64)
     node2 = node2.astype(np.int64)
 
