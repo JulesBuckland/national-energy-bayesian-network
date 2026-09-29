@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "national-energy-bayesian-network"
+version = "1.0.0"
+description = "Bayesian spatial decomposition of building energy consumption at national scale"
+readme = "README.md"
+license = "CC-BY-NC-4.0"
+requires-python = ">=3.12"
+authors = [{ name = "Jules Buckland" }]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+    ".git", ".venv", ".hypothesis", ".pytest_cache", "__pycache__",
+    "archive", "data", "docs", "logs", "manuscript", "outputs",
+    "papers", "tests/fixtures",
+]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]

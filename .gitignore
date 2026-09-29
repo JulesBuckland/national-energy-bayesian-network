@@ -37,6 +37,8 @@ tests/fixtures/*
 # hold per-machine editor and tooling state.
 *.md
 !README.md
+!CHANGELOG.md
+!CITATION.md
 .claude/
 .agents/
 tasks/
