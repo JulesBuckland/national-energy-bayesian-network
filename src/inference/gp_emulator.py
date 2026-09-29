@@ -32,6 +32,7 @@ import joblib
 import argparse
 import logging
 from pathlib import Path
+from typing import cast
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern, WhiteKernel, ConstantKernel
 from sklearn.model_selection import train_test_split
@@ -83,7 +84,9 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-def prepare_train_test_data(df: pd.DataFrame, max_train_points: int | None = None):
+def prepare_train_test_data(
+    df: pd.DataFrame, max_train_points: int | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler]:
     """Split and scale the complete valid simulation table.
 
     Every valid row is assigned once to the held-out test partition or the
@@ -97,8 +100,10 @@ def prepare_train_test_data(df: pd.DataFrame, max_train_points: int | None = Non
     X = df[FEATURES].values.astype(float)
     y = df[TARGET].values.astype(float)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_FRACTION, random_state=RANDOM_SEED
+    # cast: sklearn's stub types train_test_split as a list of arrays/strings.
+    X_train, X_test, y_train, y_test = cast(
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+        train_test_split(X, y, test_size=TEST_FRACTION, random_state=RANDOM_SEED),
     )
 
     if max_train_points is not None:
@@ -111,13 +116,16 @@ def prepare_train_test_data(df: pd.DataFrame, max_train_points: int | None = Non
                 max_train_points,
                 len(X_train),
             )
-            X_train, _, y_train, _ = train_test_split(
-                X_train, y_train, train_size=max_train_points, random_state=RANDOM_SEED
+            X_train, _, y_train, _ = cast(
+                tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+                train_test_split(
+                    X_train, y_train, train_size=max_train_points, random_state=RANDOM_SEED
+                ),
             )
 
     scaler = StandardScaler()
-    X_train_s = scaler.fit_transform(X_train)
-    X_test_s = scaler.transform(X_test)
+    X_train_s = cast(np.ndarray, scaler.fit_transform(X_train))
+    X_test_s = cast(np.ndarray, scaler.transform(X_test))
     return X_train_s, X_test_s, X_test, y_train, y_test, scaler
 
 
@@ -125,7 +133,7 @@ def fit_gp_model(X_train_s: np.ndarray, y_train: np.ndarray) -> GaussianProcessR
     """Fit the Matérn(ν=2.5) + WhiteKernel GP emulator on already-scaled features."""
     kernel = (
         ConstantKernel(1.0, constant_value_bounds=(1e-3, 1e3))
-        * Matern(length_scale=np.ones(len(FEATURES)), length_scale_bounds=(1e-2, 1e3), nu=2.5)
+        * Matern(length_scale=np.ones(len(FEATURES)), length_scale_bounds=(1e-2, 1e3), nu=2.5)  # pyright: ignore[reportArgumentType]  (sklearn accepts per-feature arrays; stub says float)
         + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-10, 1e-1))
     )
     gp = GaussianProcessRegressor(
@@ -167,7 +175,11 @@ def check_acceptance(r2: float, threshold: float = config.GP_ACCEPTANCE_R2) -> N
     logger.info(f"✓ Acceptance criterion met (R² = {r2:.4f} ≥ {threshold}).")
 
 
-def train_gp(df: pd.DataFrame):
+def train_gp(
+    df: pd.DataFrame,
+) -> tuple[
+    GaussianProcessRegressor, StandardScaler, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict
+]:
     X_train_s, X_test_s, X_test, y_train, y_test, scaler = prepare_train_test_data(df)
     gp = fit_gp_model(X_train_s, y_train)
     metrics = evaluate_gp(gp, X_test_s, y_test)
@@ -200,7 +212,7 @@ def train_gp(df: pd.DataFrame):
     return gp, scaler, X_test, y_test, metrics["y_pred"], metrics["y_std"], stats
 
 
-def plot_validation(y_test, y_pred, y_std, r2):
+def plot_validation(y_test: np.ndarray, y_pred: np.ndarray, y_std: np.ndarray, r2: float) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
     # --- Panel 1: predicted vs actual ---
@@ -239,7 +251,7 @@ def plot_validation(y_test, y_pred, y_std, r2):
     plt.close()
 
 
-def save_model(gp, scaler):
+def save_model(gp: GaussianProcessRegressor, scaler: StandardScaler) -> None:
     joblib.dump({"gp": gp, "scaler": scaler, "features": FEATURES}, MODEL_PATH)
     logger.info(f"Model saved → {MODEL_PATH}")
 
@@ -247,7 +259,7 @@ def save_model(gp, scaler):
 # ---------------------------------------------------------------------------
 # Validation-only mode
 # ---------------------------------------------------------------------------
-def validate_saved():
+def validate_saved() -> None:
     if not MODEL_PATH.exists():
         raise FileNotFoundError(f"No saved model at {MODEL_PATH}. Train first.")
     payload = joblib.load(MODEL_PATH)
@@ -270,7 +282,7 @@ def validate_saved():
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def main(validate: bool = False):
+def main(validate: bool = False) -> dict | None:
     if validate:
         validate_saved()
         return

@@ -70,6 +70,7 @@ def get_regional_hdd_map(physics_dir: Path, cities: list[str]) -> dict[str, floa
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    from src.config.settings import RAW_DIR, REGIONAL_CENTERS
     PHYSICS_DIR = RAW_DIR / "physics"
     cities = list(REGIONAL_CENTERS.keys())
     hdd_map = get_regional_hdd_map(PHYSICS_DIR, cities)

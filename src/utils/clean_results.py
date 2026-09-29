@@ -18,7 +18,7 @@ def clean_results_data(df: pd.DataFrame, imd_msoas: list[str]) -> pd.DataFrame:
     
     return df_final
 
-def clean_results():
+def clean_results() -> None:
     path = 'data/processed/national_bayesian_results.csv'
     df = pd.read_csv(path)
     

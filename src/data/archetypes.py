@@ -6,7 +6,7 @@ import sys
 sys.path.append(os.getcwd())
 from src.config.settings import PROCESSED_DIR, SYNTHETIC_POP_FILE
 
-def get_archetype_counts():
+def get_archetype_counts() -> None:
     print("--- EXTRACTING REAL ARCHETYPE COUNTS ---")
     
     # Load synthetic population

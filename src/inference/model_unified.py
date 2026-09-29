@@ -1,3 +1,7 @@
+# pyright: reportOperatorIssue=false
+# (PyTensor's stubs type pt.* / pm.math.* results loosely, flagging valid tensor arithmetic.)
+from typing import Any, cast
+
 import pandas as pd
 import numpy as np
 import pymc as pm
@@ -71,7 +75,7 @@ def log_memory(stage_name: str) -> None:
         return
     logger.info(f"[RAM USAGE - {stage_name}]: {mem_mb:.2f} MB")
 
-def summarize_divergent_draws(trace, param_names: list) -> dict:
+def summarize_divergent_draws(trace: az.InferenceData, param_names: list[str]) -> dict:
     """Pure summary of scalar posterior parameters, split by whether their draw
     diverged, to diagnose *why* NUTS is diverging (e.g. concentrated at a `rho`
     boundary, or an extreme `sigma`) without changing the convergence gate's
@@ -234,8 +238,8 @@ def run_national_unified_model(
     sigma_spatial_prior_sigma: float = 0.5,
     sigma_err_prior_sigma: float = 0.5,
     target_accept: float = 0.99,
-    draws_override: int = None,
-    tune_override: int = None,
+    draws_override: int | None = None,
+    tune_override: int | None = None,
 ) -> az.InferenceData:
     """Executes the National Unified Bayesian Inference Model.
 
@@ -418,7 +422,8 @@ def run_national_unified_model(
         raise ValueError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
 
     # Build Queen contiguity weights
-    w = libpysal.weights.Queen.from_dataframe(gdf, ids=gdf['MSOA21CD'].tolist(), silence_warnings=True)
+    # Any: libpysal's stubs type this as WSP, which lacks neighbors/id2i.
+    w: Any = libpysal.weights.Queen.from_dataframe(gdf, ids=gdf['MSOA21CD'].tolist(), silence_warnings=True)
 
     # Convert to node1, node2 lists for PyMC ICAR (extremely RAM efficient)
     node1, node2 = [], []
@@ -455,14 +460,14 @@ def run_national_unified_model(
     icar_scaling_factor = compute_icar_scaling_factor(node1, node2, len(msoa_stats))
     logger.info(f"ICAR BYM2 scaling factor: {icar_scaling_factor:.4f}")
 
-    T_var = msoa_stats['T_var'].values
+    T_var = cast(np.ndarray, msoa_stats['T_var'].values)
 
     # Z_inc standardization
     std_val = msoa_stats['income_dep_score'].std()
     if np.isnan(std_val) or std_val == 0:
         income_z = np.zeros(len(msoa_stats))
     else:
-        income_z = (msoa_stats['income_dep_score'].values - msoa_stats['income_dep_score'].mean()) / std_val
+        income_z = (cast(np.ndarray, msoa_stats['income_dep_score'].values) - msoa_stats['income_dep_score'].mean()) / std_val
 
     # 3. Restricted Spatial Regression (RSR) Projection Matrix
     # We project out Z from the ICAR to prevent Hodges-Reich confounding.
@@ -546,7 +551,7 @@ def run_national_unified_model(
     # this arviz version (1.2.0) returns display-rounded *strings* for every
     # numeric column, which silently breaks both the f"{max_r_hat:.4f}" format
     # below and the >= MCMC_MAX_RHAT comparison (string vs float).
-    summary = az.summary(trace, round_to="none")
+    summary = cast(pd.DataFrame, az.summary(trace, round_to="none"))
     if chains >= 2:
         max_r_hat = summary["r_hat"].max()
         logger.info(f"Convergence check: max r_hat={max_r_hat:.4f} (max allowed {MCMC_MAX_RHAT}).")
@@ -576,7 +581,7 @@ def run_national_unified_model(
 
     logger.info("Computing PSIS-LOO...")
     try:
-        loo_result = az.loo(trace, pointwise=True)
+        loo_result: Any = az.loo(trace, pointwise=True)
         loo_str = str(loo_result)
         high_k = int((loo_result.pareto_k.values > 0.7).sum()) if hasattr(loo_result, "pareto_k") else 0
     except Exception as e:

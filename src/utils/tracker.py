@@ -13,7 +13,9 @@ def calculate_distribution_stats(df: pd.DataFrame, column_name: str) -> dict:
         "max": stats['max']
     }
 
-def log_distribution(df: pd.DataFrame, column_name: str, stage_name: str, logger: logging.Logger):
+def log_distribution(
+    df: pd.DataFrame, column_name: str, stage_name: str, logger: logging.Logger
+) -> None:
     """
     Logs the statistical distribution of a key variable to ensure it has not drifted
     silently between pipeline stages.

@@ -1,3 +1,5 @@
+from typing import cast
+
 import pandas as pd
 import numpy as np
 import pymc as pm
@@ -12,10 +14,12 @@ from src.config.settings import (
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger("NationalNonSpatialPilot")
 
-def build_and_sample_pilot(df: pd.DataFrame, n_fit=30000, draws=1000):
+def build_and_sample_pilot(
+    df: pd.DataFrame, n_fit: int = 30000, draws: int = 1000
+) -> pd.DataFrame:
     y_obs = np.log(df['empirical_gas_kwh'].values)
     theory_need_log = np.log(df['theoretical_gas_kwh'].values)
-    income_score = df['income_dep_score'].values
+    income_score = cast(np.ndarray, df['income_dep_score'].values)
     
     # Global scaling for income
     i_mean, i_std = income_score.mean(), income_score.std()
@@ -39,10 +43,10 @@ def build_and_sample_pilot(df: pd.DataFrame, n_fit=30000, draws=1000):
         approx = pm.fit(n=n_fit, method='advi', random_seed=RANDOM_SEED)
         trace = approx.sample(draws)
         
-        summary = az.summary(trace, var_names=["beta_theory", "beta_income"])
+        summary = cast(pd.DataFrame, az.summary(trace, var_names=["beta_theory", "beta_income"]))
     return summary
 
-def run_pilot_model():
+def run_pilot_model() -> None:
     logger.info("--- STAGE 3.1: NATIONAL NON-SPATIAL PILOT (Global Estimation) ---")
     
     # 1. Load Data

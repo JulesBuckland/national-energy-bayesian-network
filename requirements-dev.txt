@@ -7,3 +7,6 @@
 
 pytest>=9.1.1
 hypothesis>=6.158.0
+pyright>=1.1.400
+pandas-stubs>=3.0.0
+ruff>=0.6.0

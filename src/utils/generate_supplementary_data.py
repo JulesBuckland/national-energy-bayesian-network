@@ -10,7 +10,7 @@ from src.config.settings import PROCESSED_DIR
 GLOBAL_PARAMS = ["beta_th", "beta_inc", "sigma_err", "rho", "sigma_spatial"]
 
 
-def generate_supplementary_data():
+def generate_supplementary_data() -> None:
     """Generate real global-parameter posterior summaries from the national exact-NUTS trace.
 
     Replaces the previous version, which wrote a hardcoded posterior table

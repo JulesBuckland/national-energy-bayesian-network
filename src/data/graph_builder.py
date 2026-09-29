@@ -1,6 +1,6 @@
 import numpy as np
 
-def build_graph(num_nodes=5):
+def build_graph(num_nodes: int = 5) -> np.ndarray:
     """
     Builds a sparse edge-list for the ICAR spatial graph.
     Returns a numpy array of shape (E, 2) where E is the number of edges.

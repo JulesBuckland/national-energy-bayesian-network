@@ -33,6 +33,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -69,7 +70,7 @@ def _resolve_rscript_path() -> str:
     return "Rscript"
 
 
-def prepare_national_msoa_dataset_for_inla(lad_codes: list = None) -> dict:
+def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dict:
     """Loads/aggregates the national synthetic population into the arrays
     fit_inla.R needs. Mirrors model_unified.py's run_national_unified_model()
     data-prep section (see module docstring for why this is a parallel, not
@@ -171,7 +172,8 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list = None) -> dict:
     if len(gdf) == 0:
         raise ValueError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
 
-    w = libpysal.weights.Queen.from_dataframe(gdf, ids=gdf["MSOA21CD"].tolist(), silence_warnings=True)
+    # Any: libpysal's stubs type this as WSP, which lacks neighbors/id2i.
+    w: Any = libpysal.weights.Queen.from_dataframe(gdf, ids=gdf["MSOA21CD"].tolist(), silence_warnings=True)
     node1, node2 = [], []
     for i, neighbors in w.neighbors.items():
         for j in neighbors:
@@ -190,7 +192,7 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list = None) -> dict:
     if np.isnan(std_val) or std_val == 0:
         income_z = np.zeros(len(msoa_stats))
     else:
-        income_z = (msoa_stats["income_dep_score"].values - msoa_stats["income_dep_score"].mean()) / std_val
+        income_z = (cast(np.ndarray, msoa_stats["income_dep_score"].values) - msoa_stats["income_dep_score"].mean()) / std_val
 
     return {
         "msoa_stats": msoa_stats, "node1": node1, "node2": node2,
@@ -199,8 +201,8 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list = None) -> dict:
     }
 
 
-def run_national_inla_model(check_laplace_agreement: bool = True, lad_codes: list = None,
-                             output_suffix: str = None) -> dict:
+def run_national_inla_model(check_laplace_agreement: bool = True, lad_codes: list | None = None,
+                             output_suffix: str | None = None) -> dict:
     """Effectful orchestrator: prepares data, exports it, invokes fit_inla.R
     as a subprocess, reads results back, computes T*, and writes
     msoa_unified_results_inla{suffix}.csv. Mirrors

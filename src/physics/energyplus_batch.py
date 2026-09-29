@@ -266,7 +266,9 @@ def _validate_weather_files(physics_dir: Path, cities: set[str]) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def run_lhs_batch(max_workers: int = 6, check_completeness: bool = False, resume: bool = False):
+def run_lhs_batch(
+    max_workers: int = 6, check_completeness: bool = False, resume: bool = False
+) -> None:
     design_files = sorted(LHS_DIR.glob("lhs_*.csv"))
     if not design_files:
         logger.error(f"No LHS design files found in {LHS_DIR}. Run 'python -m src.inference.lhs_sampler' first.")
@@ -312,7 +314,7 @@ def run_lhs_batch(max_workers: int = 6, check_completeness: bool = False, resume
     logger.info(f"Saved combined results -> {combined_path}")
 
     for arch, grp in df_all.groupby("archetype"):
-        slug = arch.replace(" ", "_").replace("/", "-").replace("+", "plus")
+        slug = str(arch).replace(" ", "_").replace("/", "-").replace("+", "plus")
         out_path = RESULTS_DIR / f"lhs_results_{slug}.csv"
         grp.to_csv(out_path, index=False)
 

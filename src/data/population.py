@@ -60,7 +60,7 @@ REGION_TO_HDD_KEY = {
 }
 
 
-def clean_seed_age_band(age_band):
+def clean_seed_age_band(age_band: int) -> str:
     mapping = {
         1: "Pre-1900", 2: "1900-1929", 3: "1930-1949", 4: "1950-1966",
         5: "1967-1982", 6: "1983-1995", 7: "1996-2006", 8: "2007+"
@@ -68,7 +68,7 @@ def clean_seed_age_band(age_band):
     return mapping.get(age_band, "1950-1966")
 
 
-def clean_seed_type(prop_type):
+def clean_seed_type(prop_type: str) -> str:
     mapping = {
         'Detached': 'House',
         'Semi-detached': 'House',
@@ -209,7 +209,7 @@ def load_census_marginals() -> tuple:
         required_label="Census TS044",
         available_label="Census TS054",
     )
-    def map_tenure(code):
+    def map_tenure(code: int) -> str:
         if code in [0, 1]: return 'Owned'
         if code in [3, 4]: return 'Social'
         return 'Private'
@@ -307,7 +307,7 @@ def filter_msoas_for_test_mode(msoa_codes: np.ndarray, region_lookup: dict) -> n
     return msoa_codes
 
 
-def run_national_synthesis():
+def run_national_synthesis() -> None:
     logger.info("--- STAGE 1: NATIONAL POPULATION SYNTHESIS V8 (Full 6,840 MSOAs) ---")
 
     seed_q = load_and_clean_seed_data()

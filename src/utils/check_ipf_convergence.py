@@ -8,7 +8,7 @@ import sys
 sys.path.append(os.getcwd())
 from src.config.settings import PROCESSED_DIR, RAW_DIR
 
-def check_ipf_convergence():
+def check_ipf_convergence() -> None:
     print("--- CALCULATING IPF CONVERGENCE DIAGNOSTICS ---")
     
     # Target Marginals

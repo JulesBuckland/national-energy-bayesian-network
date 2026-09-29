@@ -1,6 +1,9 @@
+# pyright: reportOperatorIssue=false, reportReturnType=false
+# (PyTensor's stubs type pt.sum/pt.sqr results loosely; the expression is a plain tensor.)
 import pytensor.tensor as pt
+from pytensor.tensor.variable import TensorVariable
 
-def convex_emulator(x):
+def convex_emulator(x: TensorVariable) -> TensorVariable:
     """
     A strictly convex differentiable emulator written in PyTensor.
     

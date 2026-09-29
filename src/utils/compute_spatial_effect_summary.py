@@ -17,6 +17,8 @@ between the CSV and the trace's phi/theta arrays is therefore valid for this
 trace; if a future trace attaches msoa21cd as an explicit coordinate, prefer
 joining on that label instead of relying on sort order.
 """
+from typing import cast
+
 import arviz as az
 import numpy as np
 import pandas as pd
@@ -32,7 +34,7 @@ def compute_spatial_effect_summary(
     trace = az.from_netcdf(trace_path)
     df = pd.read_csv(results_path)
 
-    assert (df["msoa21cd"].values == np.sort(df["msoa21cd"].values)).all(), (
+    assert (df["msoa21cd"].to_numpy() == np.sort(df["msoa21cd"].to_numpy())).all(), (
         "msoa_unified_results.csv is no longer sorted by msoa21cd; "
         "positional alignment with the trace would silently be wrong."
     )
@@ -50,7 +52,7 @@ def compute_spatial_effect_summary(
         np.sqrt(1 - rho)[:, None] * theta + np.sqrt(rho)[:, None] * phi
     )  # (samples, N)
 
-    income_z = (df["income_dep_score"].values - df["income_dep_score"].mean()) / df[
+    income_z = (cast(np.ndarray, df["income_dep_score"].values) - df["income_dep_score"].mean()) / df[
         "income_dep_score"
     ].std()
     zt_z_inv = 1.0 / np.sum(income_z**2)

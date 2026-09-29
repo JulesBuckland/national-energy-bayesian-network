@@ -16,7 +16,7 @@ from src.config.settings import (
 
 logger = setup_logging("SyntheticDataGenerator")
 
-def generate_data():
+def generate_data() -> None:
     logger.info("Initializing Synthetic Data Generation...")
     
     # Ensure processed directory exists

@@ -92,7 +92,7 @@ def generate_archetype_lhs(archetype: str, property_type: str, age_band: str,
         min(WWR_MAX,    wwr_nom    * (1 + VARIATION)),
     ])
 
-    sampler = LatinHypercube(d=4, seed=RANDOM_SEED)
+    sampler = LatinHypercube(d=4, seed=RANDOM_SEED)  # pyright: ignore[reportCallIssue]  (rng= yields a different stream)
     raw = sampler.random(n=N_SAMPLES)
     X = scale(raw, l_bounds=lo, u_bounds=hi)
 
@@ -125,7 +125,7 @@ def generate_archetype_lhs(archetype: str, property_type: str, age_band: str,
     return df
 
 
-def verify_discrepancy(output_dir: Path):
+def verify_discrepancy(output_dir: Path) -> None:
     """Check space-filling quality: centred L2 discrepancy should be < 0.02."""
     from scipy.stats.qmc import discrepancy
     files = sorted(output_dir.glob("lhs_*.csv"))
@@ -147,7 +147,7 @@ def verify_discrepancy(output_dir: Path):
                 "WARNING: Some designs exceed discrepancy threshold.")
 
 
-def main(verify: bool = False):
+def main(verify: bool = False) -> None:
     if verify:
         verify_discrepancy(OUTPUT_DIR)
         return

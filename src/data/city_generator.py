@@ -1,4 +1,6 @@
 import os
+from typing import cast
+
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -22,7 +24,7 @@ FAKE_PROCESSED_DIR = BASE_DIR / "data" / "processed" / "fake"
 FAKE_RAW_DIR.mkdir(parents=True, exist_ok=True)
 FAKE_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-def generate_spatial_grid(n_x, n_y):
+def generate_spatial_grid(n_x: int, n_y: int) -> tuple[list[str], np.ndarray]:
     print(f"Generating {n_x}x{n_y} spatial grid...")
     polygons = []
     msoa_codes = []
@@ -51,7 +53,9 @@ def generate_spatial_grid(n_x, n_y):
     
     return msoa_codes, np.array(centroids)
 
-def generate_confounders_and_spatial_field(msoa_codes, centroids, n_msoas):
+def generate_confounders_and_spatial_field(
+    msoa_codes: list[str], centroids: np.ndarray, n_msoas: int
+) -> pd.DataFrame:
     print("Generating continuous Matern spatial field and confounders...")
     # 1. Generate True Spatial Field (phi) using Matern GP (to avoid inverse crime)
     kernel = 1.0 * Matern(length_scale=3.0, nu=1.5)
@@ -100,7 +104,7 @@ def generate_confounders_and_spatial_field(msoa_codes, centroids, n_msoas):
     
     return confounders
 
-def generate_census_marginals(msoa_codes, n_msoas):
+def generate_census_marginals(msoa_codes: list[str], n_msoas: int) -> None:
     print("Generating fake census marginals...")
     
     # TS044
@@ -134,7 +138,7 @@ def generate_census_marginals(msoa_codes, n_msoas):
     ])
     ts054.to_csv(FAKE_RAW_DIR / "fake_census_tenure.csv", index=False)
 
-def generate_seed_microdata(confounders, n_households):
+def generate_seed_microdata(confounders: pd.DataFrame, n_households: int) -> None:
     print(f"Generating fake NEED seed microdata ({n_households} households)...")
     
     archetypes_df = pd.read_csv(BASE_DIR / "data" / "raw" / "physics" / "physics_archetypes_baseline.csv")
@@ -152,12 +156,12 @@ def generate_seed_microdata(confounders, n_households):
     )
     
     # Assign MSOAs randomly
-    hh_msoas = np.random.choice(confounders["msoa_cd"].values, size=n_households)
+    hh_msoas = np.random.choice(confounders["msoa_cd"].to_numpy(), size=n_households)
     
     # Calculate Gcons2022
-    def _calc_obs(i):
+    def _calc_obs(i: int) -> float:
         msoa = hh_msoas[i]
-        t_theory = hh_df.loc[i, "theoretical_gas_kwh"]
+        t_theory = cast(float, hh_df.loc[i, "theoretical_gas_kwh"])
         c_row = confounders[confounders["msoa_cd"] == msoa].iloc[0]
         z_inc = c_row["income_dep_score"]
         omega = c_row["true_omega"]
