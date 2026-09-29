@@ -17,12 +17,13 @@ between the CSV and the trace's phi/theta arrays is therefore valid for this
 trace; if a future trace attaches msoa21cd as an explicit coordinate, prefer
 joining on that label instead of relying on sort order.
 """
+
+from pathlib import Path
 from typing import cast
 
 import arviz as az
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 PROCESSED_DIR = Path("data/processed")
 
@@ -52,9 +53,9 @@ def compute_spatial_effect_summary(
         np.sqrt(1 - rho)[:, None] * theta + np.sqrt(rho)[:, None] * phi
     )  # (samples, N)
 
-    income_z = (cast(np.ndarray, df["income_dep_score"].values) - df["income_dep_score"].mean()) / df[
-        "income_dep_score"
-    ].std()
+    income_z = (
+        cast(np.ndarray, df["income_dep_score"].values) - df["income_dep_score"].mean()
+    ) / df["income_dep_score"].std()
     zt_z_inv = 1.0 / np.sum(income_z**2)
     zt_omega = omega @ income_z  # (samples,)
     omega_star = omega - np.outer(zt_omega * zt_z_inv, income_z)  # (samples, N)

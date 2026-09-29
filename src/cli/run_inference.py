@@ -1,4 +1,5 @@
 """CLI entry point for the ABS-UBEM inference pipeline."""
+
 import sys
 from pathlib import Path
 
@@ -50,9 +51,7 @@ REQUIRED_INPUTS = [
 
 def check_inputs() -> list[tuple[list[Path], str, str]]:
     """Return the entries whose candidate paths are all missing."""
-    return [
-        entry for entry in REQUIRED_INPUTS if not any(p.exists() for p in entry[0])
-    ]
+    return [entry for entry in REQUIRED_INPUTS if not any(p.exists() for p in entry[0])]
 
 
 def main() -> int:

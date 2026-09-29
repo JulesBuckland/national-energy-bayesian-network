@@ -1,4 +1,5 @@
 """Filesystem layout for the project, selected by run mode."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

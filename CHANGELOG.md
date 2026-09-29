@@ -12,10 +12,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `src/data/efus_loader.py` — EFUS 2017 data loader prototype
 - `src/research/desnz_lsoa_validation.py` — MSOA-level calibration vs DESNZ aggregates
 - `src/research/targeting_comparison.py` — T* vs physics-only retrofit targeting analysis
+- `src/config/paths.py`, `model.py`, `logging.py` — frozen `PathConfig` / `ModelConfig` dataclasses and `setup_logging`, extracted from `settings.py`
+- `src/core/exceptions.py` — `DataValidationError`, `ConvergenceError`, `ProvenanceError` (each subclasses the built-in it replaces, so existing handlers still catch them)
+- `[tool.pyright]` (basic, `src` excluding `src/research`); `pyright`, `pandas-stubs` and `ruff` added to `requirements-dev.txt`
+- `tests/unit/test_core_exceptions.py`
 
 ### Changed
 - Repo canonical location moved to OneDrive with junction at `~/national-energy-bayesian-network/`
 - CLAUDE.md: venv instructions updated (create outside OneDrive at `~/.venvs/paper5/`)
+- `src/config/settings.py` is now a thin import surface over `PathConfig` / `ModelConfig`; every module-level name is unchanged (verified identical in prod, `TEST_MODE` and `USE_FAKE_CITY`)
+- Type annotations on every function signature outside `src/research`; pyright basic goes from 129 errors to 0 (type-only fixes — casts, `| None` on `None` defaults, unbound `RAW_DIR` in `epw_parser`'s `__main__`)
+- Domain exceptions raised in `src/inference`, `src/utils/provenance.py` and `src/data`; `InlaGateFailedError` now derives from `ConvergenceError`
+- `ruff check --fix` (safe fixes) and `ruff format` applied to `src` excluding `src/research`; 21 lint findings remain (E402 after `sys.path` setup, unused locals, whitespace)
+- `LatinHypercube` deliberately keeps `seed=` — `rng=` produces a different stream and would change the LHS designs
 
 ## [1.0.0] — 2026-07-26
 

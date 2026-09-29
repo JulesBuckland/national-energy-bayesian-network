@@ -1,4 +1,5 @@
 """Model and MCMC constants."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -6,22 +7,31 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 _REGIONS = (
-    "North West", "North East", "Yorkshire and The Humber", "East Midlands",
-    "West Midlands", "East of England", "London", "South East", "South West",
+    "North West",
+    "North East",
+    "Yorkshire and The Humber",
+    "East Midlands",
+    "West Midlands",
+    "East of England",
+    "London",
+    "South East",
+    "South West",
 )
 
 # Representative cities for regional weather pulling
-_REGIONAL_CENTERS = MappingProxyType({
-    "London": (51.5074, -0.1278),
-    "Manchester": (53.4808, -2.2426),
-    "Birmingham": (52.4862, -1.8904),
-    "Leeds": (53.8008, -1.5491),
-    "Newcastle": (54.9783, -1.6178),
-    "Bristol": (51.4545, -2.5879),
-    "Norwich": (52.6309, 1.2974),
-    "Southampton": (50.9097, -1.4044),
-    "Nottingham": (52.9548, -1.1581),
-})
+_REGIONAL_CENTERS = MappingProxyType(
+    {
+        "London": (51.5074, -0.1278),
+        "Manchester": (53.4808, -2.2426),
+        "Birmingham": (52.4862, -1.8904),
+        "Leeds": (53.8008, -1.5491),
+        "Newcastle": (54.9783, -1.6178),
+        "Bristol": (51.4545, -2.5879),
+        "Norwich": (52.6309, 1.2974),
+        "Southampton": (50.9097, -1.4044),
+        "Nottingham": (52.9548, -1.1581),
+    }
+)
 
 
 @dataclass(frozen=True)

@@ -5,9 +5,10 @@ selects them from environment variables and re-exports the original
 module-level names so existing ``from src.config.settings import X`` keeps
 working.
 """
+
 import os
 
-from src.config.logging import setup_logging
+from src.config.logging import setup_logging  # noqa: F401  (re-export)
 from src.config.model import ModelConfig
 from src.config.paths import BASE_DIR, PathConfig
 

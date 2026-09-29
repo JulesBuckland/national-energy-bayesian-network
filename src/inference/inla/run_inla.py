@@ -29,28 +29,33 @@ Pipeline:
        never overwriting the NUTS path's msoa_unified_results.csv, so both
        engines' results coexist for the cross-validation write-up.
 """
+
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, cast
 
+import geopandas as gpd
+import joblib
+import libpysal
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-import libpysal
-import joblib
 
-from src.core.exceptions import DataValidationError
 from src.config.settings import (
-    PROCESSED_DIR, MSOA_CONFOUNDERS_NATIONAL, BOUNDARIES_PATH,
-    PILOT_MODE, setup_logging,
+    BOUNDARIES_PATH,
+    MSOA_CONFOUNDERS_NATIONAL,
+    PILOT_MODE,
+    PROCESSED_DIR,
+    setup_logging,
 )
-from src.inference.model_unified import _use_csv_baseline, log_memory, GP_MODEL_PATH, GP_FEATURES
+from src.core.exceptions import DataValidationError
 from src.inference.inla.data_export import export_inla_inputs
 from src.inference.inla.read_results import (
-    load_inla_results, build_spatial_effect_summary_from_inla, InlaGateFailedError,
+    InlaGateFailedError,  # noqa: F401  (re-exported for callers of run_inla)
+    build_spatial_effect_summary_from_inla,
+    load_inla_results,
 )
+from src.inference.model_unified import GP_FEATURES, GP_MODEL_PATH, _use_csv_baseline, log_memory
 
 logger = setup_logging("BayesianUnifiedNationalINLA")
 
@@ -104,6 +109,7 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
 
     if lad_codes:
         from src.config.settings import LAD_LOOKUP_PATH
+
         lookup = pd.read_csv(LAD_LOOKUP_PATH)
         subset_msoas = lookup[lookup["ladcd"].isin(lad_codes)]["msoa21cd"]
         before = df["msoa21cd"].nunique()
@@ -113,7 +119,9 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
             f"{df['msoa21cd'].nunique()} MSOAs for LAD codes {lad_codes} ***"
         )
         if df.empty:
-            raise DataValidationError(f"LAD filter {lad_codes} matched zero households -- check the codes.")
+            raise DataValidationError(
+                f"LAD filter {lad_codes} matched zero households -- check the codes."
+            )
 
     if GP_MODEL_PATH.exists():
         logger.info(f"Loading GP emulator from {GP_MODEL_PATH}...")
@@ -123,7 +131,9 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
 
         missing_cols = [c for c in GP_FEATURES if c not in df.columns]
         if missing_cols:
-            logger.warning(f"GP feature columns missing: {missing_cols}. Falling back to CSV baseline.")
+            logger.warning(
+                f"GP feature columns missing: {missing_cols}. Falling back to CSV baseline."
+            )
             df = _use_csv_baseline(df)
         else:
             logger.info(f"Running GP predictions for {len(df):,} households...")
@@ -131,13 +141,15 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
             BATCH_SIZE = 20000
             T_preds, T_stds = [], []
             for i in range(0, len(X_hh_s), BATCH_SIZE):
-                pred, std = gp_model.predict(X_hh_s[i:i + BATCH_SIZE], return_std=True)
+                pred, std = gp_model.predict(X_hh_s[i : i + BATCH_SIZE], return_std=True)
                 T_preds.append(pred)
                 T_stds.append(std)
             T_pred = np.maximum(0.0, np.concatenate(T_preds))
             T_std = np.concatenate(T_stds)
             df = df.assign(theoretical_gas_kwh=T_pred * 277.778, T_std_kwh=T_std * 277.778)
-            assert (df["theoretical_gas_kwh"] >= 0).all(), "FATAL: Negative theoretical gas prediction detected!"
+            assert (df["theoretical_gas_kwh"] >= 0).all(), (
+                "FATAL: Negative theoretical gas prediction detected!"
+            )
             log_memory("Post-GP Prediction")
     else:
         logger.warning(f"GP emulator not found at {GP_MODEL_PATH}. Falling back to CSV baseline.")
@@ -147,19 +159,29 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
 
     if "T_std_kwh" in df.columns:
         df = df.assign(log_T_var=(df["T_std_kwh"] / df["theoretical_gas_kwh"].clip(lower=1)) ** 2)
-        msoa_stats = df.groupby("msoa21cd").agg(
-            y_mean=("empirical_thermal_kwh", "mean"),
-            T_mean=("theoretical_gas_kwh", "mean"),
-            T_var=("log_T_var", "mean"),
-        ).reset_index()
+        msoa_stats = (
+            df.groupby("msoa21cd")
+            .agg(
+                y_mean=("empirical_thermal_kwh", "mean"),
+                T_mean=("theoretical_gas_kwh", "mean"),
+                T_var=("log_T_var", "mean"),
+            )
+            .reset_index()
+        )
     else:
-        msoa_stats = df.groupby("msoa21cd").agg(
-            y_mean=("empirical_thermal_kwh", "mean"),
-            T_mean=("theoretical_gas_kwh", "mean"),
-            T_var=("empirical_thermal_kwh", lambda x: np.var(np.log(x + 1e-6))),
-        ).reset_index()
+        msoa_stats = (
+            df.groupby("msoa21cd")
+            .agg(
+                y_mean=("empirical_thermal_kwh", "mean"),
+                T_mean=("theoretical_gas_kwh", "mean"),
+                T_var=("empirical_thermal_kwh", lambda x: np.var(np.log(x + 1e-6))),
+            )
+            .reset_index()
+        )
 
-    msoa_stats = msoa_stats.merge(confounders.reset_index(), left_on="msoa21cd", right_on="msoa_cd", how="inner")
+    msoa_stats = msoa_stats.merge(
+        confounders.reset_index(), left_on="msoa21cd", right_on="msoa_cd", how="inner"
+    )
 
     initial_len = len(msoa_stats)
     msoa_stats = msoa_stats.dropna(subset=["y_mean", "T_mean", "income_dep_score"])
@@ -167,14 +189,24 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
     logger.info(f"Aggregated {len(df)} households into {len(msoa_stats)} MSOAs.")
 
     gdf = gpd.read_file(BOUNDARIES_PATH)
-    gdf = gdf[gdf["MSOA21CD"].isin(msoa_stats["msoa21cd"])].sort_values("MSOA21CD").reset_index(drop=True)
+    gdf = (
+        gdf[gdf["MSOA21CD"].isin(msoa_stats["msoa21cd"])]
+        .sort_values("MSOA21CD")
+        .reset_index(drop=True)
+    )
     msoa_stats = msoa_stats.sort_values("msoa21cd").reset_index(drop=True)
-    assert len(gdf) == len(msoa_stats), f"FATAL: Dimension mismatch! GDF has {len(gdf)} but stats has {len(msoa_stats)}"
+    assert len(gdf) == len(msoa_stats), (
+        f"FATAL: Dimension mismatch! GDF has {len(gdf)} but stats has {len(msoa_stats)}"
+    )
     if len(gdf) == 0:
-        raise DataValidationError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
+        raise DataValidationError(
+            "FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data."
+        )
 
     # Any: libpysal's stubs type this as WSP, which lacks neighbors/id2i.
-    w: Any = libpysal.weights.Queen.from_dataframe(gdf, ids=gdf["MSOA21CD"].tolist(), silence_warnings=True)
+    w: Any = libpysal.weights.Queen.from_dataframe(
+        gdf, ids=gdf["MSOA21CD"].tolist(), silence_warnings=True
+    )
     node1, node2 = [], []
     for i, neighbors in w.neighbors.items():
         for j in neighbors:
@@ -193,17 +225,29 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
     if np.isnan(std_val) or std_val == 0:
         income_z = np.zeros(len(msoa_stats))
     else:
-        income_z = (cast(np.ndarray, msoa_stats["income_dep_score"].values) - msoa_stats["income_dep_score"].mean()) / std_val
+        income_z = (
+            cast(np.ndarray, msoa_stats["income_dep_score"].values)
+            - msoa_stats["income_dep_score"].mean()
+        ) / std_val
 
     return {
-        "msoa_stats": msoa_stats, "node1": node1, "node2": node2,
-        "T_var": T_var, "income_z": income_z, "theory_log": theory_log, "y_obs": y_obs,
-        "N": len(msoa_stats), "n_edges": len(node1),
+        "msoa_stats": msoa_stats,
+        "node1": node1,
+        "node2": node2,
+        "T_var": T_var,
+        "income_z": income_z,
+        "theory_log": theory_log,
+        "y_obs": y_obs,
+        "N": len(msoa_stats),
+        "n_edges": len(node1),
     }
 
 
-def run_national_inla_model(check_laplace_agreement: bool = True, lad_codes: list | None = None,
-                             output_suffix: str | None = None) -> dict:
+def run_national_inla_model(
+    check_laplace_agreement: bool = True,
+    lad_codes: list | None = None,
+    output_suffix: str | None = None,
+) -> dict:
     """Effectful orchestrator: prepares data, exports it, invokes fit_inla.R
     as a subprocess, reads results back, computes T*, and writes
     msoa_unified_results_inla{suffix}.csv. Mirrors
@@ -240,26 +284,39 @@ def run_national_inla_model(check_laplace_agreement: bool = True, lad_codes: lis
 
     io_dir = PROCESSED_DIR / f"inla_io{suffix}"
     export_paths = export_inla_inputs(
-        data["node1"], data["node2"], data["T_var"], data["income_z"],
-        data["theory_log"], data["y_obs"], io_dir / "in",
+        data["node1"],
+        data["node2"],
+        data["T_var"],
+        data["income_z"],
+        data["theory_log"],
+        data["y_obs"],
+        io_dir / "in",
     )
 
     output_dir = io_dir / "out"
     rscript = _resolve_rscript_path()
     cmd = [
-        rscript, str(FIT_INLA_R_SCRIPT),
-        "--nodes", str(export_paths["nodes_path"]),
-        "--edges", str(export_paths["edges_path"]),
-        "--output_dir", str(output_dir),
-        "--mode", "pilot" if is_pilot else "final",
-        "--check_laplace_agreement", "TRUE" if check_laplace_agreement else "FALSE",
+        rscript,
+        str(FIT_INLA_R_SCRIPT),
+        "--nodes",
+        str(export_paths["nodes_path"]),
+        "--edges",
+        str(export_paths["edges_path"]),
+        "--output_dir",
+        str(output_dir),
+        "--mode",
+        "pilot" if is_pilot else "final",
+        "--check_laplace_agreement",
+        "TRUE" if check_laplace_agreement else "FALSE",
     ]
     logger.info(f"Invoking: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     logger.info(result.stdout)
     if result.returncode != 0 and "GATE" not in result.stdout:
         logger.error(result.stderr)
-        raise RuntimeError(f"fit_inla.R failed (exit {result.returncode}), not via the quality gate:\n{result.stderr}")
+        raise RuntimeError(
+            f"fit_inla.R failed (exit {result.returncode}), not via the quality gate:\n{result.stderr}"
+        )
     if result.stderr:
         logger.warning(result.stderr)
 

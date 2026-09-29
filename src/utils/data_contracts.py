@@ -1,5 +1,5 @@
 import pandera as pa
-from pandera import Column, Check
+from pandera import Check, Column
 
 # Data Contract for the synthetic population DataFrame
 population_schema = pa.DataFrameSchema(
@@ -7,8 +7,11 @@ population_schema = pa.DataFrameSchema(
         "msoa21cd": Column(
             str,
             checks=[
-                Check(lambda s: s.str.startswith(("E02", "W02")), error="MSOA code must start with E02 or W02"),
-                Check(lambda s: s.str.len() == 9, error="MSOA code must be exactly 9 characters")
+                Check(
+                    lambda s: s.str.startswith(("E02", "W02")),
+                    error="MSOA code must start with E02 or W02",
+                ),
+                Check(lambda s: s.str.len() == 9, error="MSOA code must be exactly 9 characters"),
             ],
             nullable=False,
         ),
@@ -59,5 +62,5 @@ population_schema = pa.DataFrameSchema(
         ),
     },
     coerce=True,
-    strict=False  # Allow other columns to exist without failing
+    strict=False,  # Allow other columns to exist without failing
 )

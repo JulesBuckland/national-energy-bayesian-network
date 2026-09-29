@@ -8,6 +8,7 @@ main pipeline.
 Data: UK Data Service SN 9434
 Path: data/raw/efus_2017/ukda_9434_csv_r/csv/
 """
+
 import glob
 from pathlib import Path
 
@@ -20,13 +21,26 @@ logger = setup_logging("EFUSLoader")
 
 EFUS_DIR = Path("data/raw/efus_2017/ukda_9434_csv_r/csv")
 
-DWELLING_TYPE_MAP = {1: "Detached", 2: "Semi-detached", 3: "Terraced",
-                     4: "Bungalow", 5: "Converted flat", 6: "Purpose-built flat"}
+DWELLING_TYPE_MAP = {
+    1: "Detached",
+    2: "Semi-detached",
+    3: "Terraced",
+    4: "Bungalow",
+    5: "Converted flat",
+    6: "Purpose-built flat",
+}
 
 FLOOR_AREA_MIDPOINTS = {1: 40, 2: 60, 3: 80, 4: 100, 5: 130, 6: 180}
 
-DWELLING_AGE_MAP = {1: "pre-1919", 2: "1919-1944", 3: "1945-1964",
-                    4: "1965-1980", 5: "1981-1990", 6: "1991-2002", 7: "2003+"}
+DWELLING_AGE_MAP = {
+    1: "pre-1919",
+    2: "1919-1944",
+    3: "1945-1964",
+    4: "1965-1980",
+    5: "1981-1990",
+    6: "1991-2002",
+    7: "2003+",
+}
 
 EPC_BAND_MAP = {1: "A-B", 2: "C", 3: "D", 4: "E-G"}
 
@@ -93,11 +107,15 @@ def compute_annual_gas_kwh(meter_df: pd.DataFrame) -> pd.DataFrame:
     meter_df = meter_df.copy()
     meter_df["date"] = meter_df["ReadingDate"].dt.date
 
-    per_dwelling = meter_df.groupby("CaseID").agg(
-        total_kwh=("MeterReading", "sum"),
-        date_min=("date", "min"),
-        date_max=("date", "max"),
-    ).reset_index()
+    per_dwelling = (
+        meter_df.groupby("CaseID")
+        .agg(
+            total_kwh=("MeterReading", "sum"),
+            date_min=("date", "min"),
+            date_max=("date", "max"),
+        )
+        .reset_index()
+    )
 
     per_dwelling["days_monitored"] = (
         pd.to_datetime(per_dwelling["date_max"]) - pd.to_datetime(per_dwelling["date_min"])
@@ -137,8 +155,7 @@ def build_efus_validation_dataset(efus_dir: Path = EFUS_DIR) -> pd.DataFrame:
     merged = merged[merged["gas_heated"] & merged["annual_gas_kwh"].notna()]
 
     logger.info(
-        f"EFUS validation dataset: {len(merged)} gas-heated dwellings "
-        f"with metered consumption."
+        f"EFUS validation dataset: {len(merged)} gas-heated dwellings with metered consumption."
     )
     return merged
 

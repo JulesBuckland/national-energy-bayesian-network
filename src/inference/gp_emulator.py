@@ -22,22 +22,23 @@ Usage:
   python src/inference/gp_emulator.py --validate   # load saved model, print R²
 """
 
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import json
-import joblib
 import argparse
+import json
 import logging
-from pathlib import Path
 from typing import cast
+
+import joblib
+import matplotlib.pyplot as plt
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern, WhiteKernel, ConstantKernel
+from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
+from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import r2_score, mean_absolute_error
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("GPEmulator")
@@ -48,22 +49,22 @@ from src.utils.provenance import file_record
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-BASE_DIR      = config.BASE_DIR
-PHYSICS_DIR   = config.RAW_DIR / "physics"
+BASE_DIR = config.BASE_DIR
+PHYSICS_DIR = config.RAW_DIR / "physics"
 PROCESSED_DIR = config.PROCESSED_DIR
-FIGURES_DIR   = config.BASE_DIR / "outputs" / "figures"
+FIGURES_DIR = config.BASE_DIR / "outputs" / "figures"
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-COMBINED_CSV   = PHYSICS_DIR / "lhs_results_combined.csv"
-MODEL_PATH     = PROCESSED_DIR / "gp_emulator.pkl"
-STATS_PATH     = PROCESSED_DIR / "gp_validation_stats.json"
-FIGURE_PATH    = FIGURES_DIR  / "gp_validation.png"
+COMBINED_CSV = PHYSICS_DIR / "lhs_results_combined.csv"
+MODEL_PATH = PROCESSED_DIR / "gp_emulator.pkl"
+STATS_PATH = PROCESSED_DIR / "gp_validation_stats.json"
+FIGURE_PATH = FIGURES_DIR / "gp_validation.png"
 
-FEATURES       = ["floor_area", "wall_u", "ach", "wwr", "form_code", "hdd"]
-TARGET         = "T_h"
-RANDOM_SEED    = 42
-TEST_FRACTION  = 50 / 300   # 50 held-out per archetype
+FEATURES = ["floor_area", "wall_u", "ach", "wwr", "form_code", "hdd"]
+TARGET = "T_h"
+RANDOM_SEED = 42
+TEST_FRACTION = 50 / 300  # 50 held-out per archetype
 
 
 # ---------------------------------------------------------------------------
@@ -155,8 +156,11 @@ def evaluate_gp(gp: GaussianProcessRegressor, X_test_s: np.ndarray, y_test: np.n
     mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(np.mean((y_test - y_pred) ** 2))
     return {
-        "r2": float(r2), "mae": float(mae), "rmse": float(rmse),
-        "y_pred": y_pred, "y_std": y_std,
+        "r2": float(r2),
+        "mae": float(mae),
+        "rmse": float(rmse),
+        "y_pred": y_pred,
+        "y_std": y_std,
     }
 
 
@@ -225,7 +229,9 @@ def plot_validation(y_test: np.ndarray, y_pred: np.ndarray, y_std: np.ndarray, r
         np.sort(y_test),
         np.sort(y_pred) - 2 * y_std[np.argsort(y_test)],
         np.sort(y_pred) + 2 * y_std[np.argsort(y_test)],
-        alpha=0.12, color="#2563EB", label="GP 2σ band"
+        alpha=0.12,
+        color="#2563EB",
+        label="GP 2σ band",
     )
     ax.set_xlabel("EnergyPlus T_h  (kWh/year)", fontsize=11)
     ax.set_ylabel("GP Predicted T_h  (kWh/year)", fontsize=11)
@@ -240,10 +246,16 @@ def plot_validation(y_test: np.ndarray, y_pred: np.ndarray, y_std: np.ndarray, r
     ax2.set_xlabel("Residual  (kWh/year)", fontsize=11)
     ax2.set_ylabel("Count", fontsize=11)
     ax2.set_title("Prediction Residuals", fontsize=12)
-    ax2.text(0.97, 0.95,
-             f"Mean: {residuals.mean():.1f}\nSD: {residuals.std():.1f}",
-             transform=ax2.transAxes, ha="right", va="top",
-             fontsize=9, bbox=dict(boxstyle="round", fc="white", alpha=0.7))
+    ax2.text(
+        0.97,
+        0.95,
+        f"Mean: {residuals.mean():.1f}\nSD: {residuals.std():.1f}",
+        transform=ax2.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        bbox=dict(boxstyle="round", fc="white", alpha=0.7),
+    )
 
     plt.tight_layout()
     plt.savefig(FIGURE_PATH, dpi=150, bbox_inches="tight")
@@ -296,7 +308,10 @@ def main(validate: bool = False) -> dict | None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--validate", action="store_true",
-                        help="Load the saved emulator and report R² without retraining.")
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Load the saved emulator and report R² without retraining.",
+    )
     args = parser.parse_args()
     main(validate=args.validate)

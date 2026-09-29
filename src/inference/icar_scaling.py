@@ -10,6 +10,7 @@ sqrt(scaling_factor) gives a spatial field whose typical (geometric-mean)
 marginal variance is 1, making the BYM2 mixing weight `rho` interpretable
 as the actual proportion of variance attributable to spatial clustering.
 """
+
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import splu

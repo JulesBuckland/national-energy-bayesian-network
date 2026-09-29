@@ -9,13 +9,15 @@ Columns: floor_area, wall_u, ach, wwr, form_code, age_band, property_type,
          archetype, wall_u_nominal, ach_nominal, wwr_nominal, area_nominal
 """
 
+import argparse
+import logging
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import logging
 from scipy.stats.qmc import LatinHypercube, scale
-from pathlib import Path
-from src.config.settings import REGIONAL_CENTERS, RAW_DIR
-import argparse
+
+from src.config.settings import RAW_DIR, REGIONAL_CENTERS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("LHSSampler")
@@ -29,7 +31,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 BASELINE_CSV = PHYSICS_DIR / "physics_archetypes_baseline.csv"
 
-N_SAMPLES = 300   # LHS points per archetype
+N_SAMPLES = 300  # LHS points per archetype
 VARIATION = 0.30  # ± 30% around nominal values
 from src.config.settings import RANDOM_SEED
 
@@ -37,34 +39,35 @@ from src.config.settings import RANDOM_SEED
 # Construction specs per age band (from 01b/01c — UK Building Regs history)
 # ---------------------------------------------------------------------------
 CONSTRUCTION_SPECS = {
-    "Pre-1900":  {"wall": 2.1,  "roof": 2.0,  "floor": 1.2, "window": 4.8, "ach": 1.5},
-    "1900-1929": {"wall": 2.1,  "roof": 1.5,  "floor": 1.2, "window": 4.8, "ach": 1.5},
-    "1930-1949": {"wall": 1.7,  "roof": 1.0,  "floor": 1.0, "window": 4.8, "ach": 1.2},
-    "1950-1966": {"wall": 1.5,  "roof": 0.7,  "floor": 0.8, "window": 4.8, "ach": 1.0},
-    "1967-1982": {"wall": 1.0,  "roof": 0.4,  "floor": 0.6, "window": 3.0, "ach": 0.8},
-    "1983-1995": {"wall": 0.6,  "roof": 0.3,  "floor": 0.4, "window": 2.5, "ach": 0.6},
-    "1996-2006": {"wall": 0.45, "roof": 0.2,  "floor": 0.3, "window": 2.0, "ach": 0.5},
-    "2007+":     {"wall": 0.3,  "roof": 0.15, "floor": 0.2, "window": 1.6, "ach": 0.5},
+    "Pre-1900": {"wall": 2.1, "roof": 2.0, "floor": 1.2, "window": 4.8, "ach": 1.5},
+    "1900-1929": {"wall": 2.1, "roof": 1.5, "floor": 1.2, "window": 4.8, "ach": 1.5},
+    "1930-1949": {"wall": 1.7, "roof": 1.0, "floor": 1.0, "window": 4.8, "ach": 1.2},
+    "1950-1966": {"wall": 1.5, "roof": 0.7, "floor": 0.8, "window": 4.8, "ach": 1.0},
+    "1967-1982": {"wall": 1.0, "roof": 0.4, "floor": 0.6, "window": 3.0, "ach": 0.8},
+    "1983-1995": {"wall": 0.6, "roof": 0.3, "floor": 0.4, "window": 2.5, "ach": 0.6},
+    "1996-2006": {"wall": 0.45, "roof": 0.2, "floor": 0.3, "window": 2.0, "ach": 0.5},
+    "2007+": {"wall": 0.3, "roof": 0.15, "floor": 0.2, "window": 1.6, "ach": 0.5},
 }
 
 FORM_SPECS = {
-    "House":      {"wwr": 0.15, "form_code": 3, "exposed_walls": 4, "floors": 2},
-    "Flat":       {"wwr": 0.20, "form_code": 0, "exposed_walls": 1, "floors": 1},
-    "Bungalow":   {"wwr": 0.15, "form_code": 1, "exposed_walls": 4, "floors": 1},
+    "House": {"wwr": 0.15, "form_code": 3, "exposed_walls": 4, "floors": 2},
+    "Flat": {"wwr": 0.20, "form_code": 0, "exposed_walls": 1, "floors": 1},
+    "Bungalow": {"wwr": 0.15, "form_code": 1, "exposed_walls": 4, "floors": 1},
     "Maisonette": {"wwr": 0.15, "form_code": 2, "exposed_walls": 2, "floors": 2},
 }
 
 # Physical constraints — never let parameters go outside plausible limits
-U_WALL_MIN, U_WALL_MAX = 0.10, 3.0   # W/m²K (passivhaus to uninsulated solid brick)
-ACH_MIN, ACH_MAX       = 0.15, 3.0   # air changes/hour
-WWR_MIN, WWR_MAX       = 0.05, 0.40  # window-to-wall ratio
+U_WALL_MIN, U_WALL_MAX = 0.10, 3.0  # W/m²K (passivhaus to uninsulated solid brick)
+ACH_MIN, ACH_MAX = 0.15, 3.0  # air changes/hour
+WWR_MIN, WWR_MAX = 0.05, 0.40  # window-to-wall ratio
 
 
-def generate_archetype_lhs(archetype: str, property_type: str, age_band: str,
-                            area_nominal: float) -> pd.DataFrame:
+def generate_archetype_lhs(
+    archetype: str, property_type: str, age_band: str, area_nominal: float
+) -> pd.DataFrame:
     """
     Generate N_SAMPLES LHS points for one archetype.
-    
+
     Inputs varied:
         floor_area  — ± VARIATION around area_nominal
         wall_u      — ± VARIATION around age-band nominal (clamped to physical range)
@@ -72,25 +75,29 @@ def generate_archetype_lhs(archetype: str, property_type: str, age_band: str,
         wwr         — ± VARIATION around form nominal (clamped to physical range)
     """
     specs = CONSTRUCTION_SPECS[age_band]
-    form  = FORM_SPECS[property_type]
+    form = FORM_SPECS[property_type]
 
     wall_u_nom = specs["wall"]
-    ach_nom    = specs["ach"]
-    wwr_nom    = form["wwr"]
+    ach_nom = specs["ach"]
+    wwr_nom = form["wwr"]
 
     # Bounds
-    lo = np.array([
-        area_nominal * (1 - VARIATION),
-        max(U_WALL_MIN, wall_u_nom * (1 - VARIATION)),
-        max(ACH_MIN,    ach_nom    * (1 - VARIATION)),
-        max(WWR_MIN,    wwr_nom    * (1 - VARIATION)),
-    ])
-    hi = np.array([
-        area_nominal * (1 + VARIATION),
-        min(U_WALL_MAX, wall_u_nom * (1 + VARIATION)),
-        min(ACH_MAX,    ach_nom    * (1 + VARIATION)),
-        min(WWR_MAX,    wwr_nom    * (1 + VARIATION)),
-    ])
+    lo = np.array(
+        [
+            area_nominal * (1 - VARIATION),
+            max(U_WALL_MIN, wall_u_nom * (1 - VARIATION)),
+            max(ACH_MIN, ach_nom * (1 - VARIATION)),
+            max(WWR_MIN, wwr_nom * (1 - VARIATION)),
+        ]
+    )
+    hi = np.array(
+        [
+            area_nominal * (1 + VARIATION),
+            min(U_WALL_MAX, wall_u_nom * (1 + VARIATION)),
+            min(ACH_MAX, ach_nom * (1 + VARIATION)),
+            min(WWR_MAX, wwr_nom * (1 + VARIATION)),
+        ]
+    )
 
     sampler = LatinHypercube(d=4, seed=RANDOM_SEED)  # pyright: ignore[reportCallIssue]  (rng= yields a different stream)
     raw = sampler.random(n=N_SAMPLES)
@@ -99,8 +106,10 @@ def generate_archetype_lhs(archetype: str, property_type: str, age_band: str,
     # Calculate HDDs dynamically from EPW files
     import sys
     from pathlib import Path
+
     sys.path.append(str(Path(__file__).resolve().parent.parent))
     from src.utils.epw_parser import get_regional_hdd_map
+
     cities = list(REGIONAL_CENTERS.keys())
     physics_dir = RAW_DIR / "physics"
     regional_hdd = get_regional_hdd_map(physics_dir, cities)
@@ -128,6 +137,7 @@ def generate_archetype_lhs(archetype: str, property_type: str, age_band: str,
 def verify_discrepancy(output_dir: Path) -> None:
     """Check space-filling quality: centred L2 discrepancy should be < 0.02."""
     from scipy.stats.qmc import discrepancy
+
     files = sorted(output_dir.glob("lhs_*.csv"))
     if not files:
         logger.warning("No LHS files found — run without --verify-discrepancy first.")
@@ -143,8 +153,11 @@ def verify_discrepancy(output_dir: Path) -> None:
         if status == "FAIL":
             all_pass = False
         logger.info(f"{status} | {f.stem} | discrepancy={d:.5f}")
-    logger.info("All discrepancy checks passed." if all_pass else
-                "WARNING: Some designs exceed discrepancy threshold.")
+    logger.info(
+        "All discrepancy checks passed."
+        if all_pass
+        else "WARNING: Some designs exceed discrepancy threshold."
+    )
 
 
 def main(verify: bool = False) -> None:
@@ -162,7 +175,7 @@ def main(verify: bool = False) -> None:
 
     # Identify the archetype, type, age, area columns
     type_col = next(c for c in baseline.columns if "type" in c.lower() and "property" in c.lower())
-    age_col  = next(c for c in baseline.columns if "age"  in c.lower() and "property" in c.lower())
+    age_col = next(c for c in baseline.columns if "age" in c.lower() and "property" in c.lower())
     area_col = next(c for c in baseline.columns if "area" in c.lower() and "mean" in c.lower())
     arch_col = next((c for c in baseline.columns if c.lower() == "archetype"), baseline.columns[0])
 
@@ -171,9 +184,9 @@ def main(verify: bool = False) -> None:
     all_frames = []
     for _, row in baseline.iterrows():
         ptype = str(row[type_col]).strip()
-        age   = str(row[age_col]).strip()
-        area  = float(row[area_col])
-        arch  = str(row[arch_col]).strip()
+        age = str(row[age_col]).strip()
+        area = float(row[area_col])
+        arch = str(row[arch_col]).strip()
 
         if ptype not in FORM_SPECS:
             logger.warning(f"Skipping unknown property type '{ptype}' for {arch}")
@@ -199,7 +212,10 @@ def main(verify: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--verify-discrepancy", action="store_true",
-                        help="Check space-filling quality of existing designs.")
+    parser.add_argument(
+        "--verify-discrepancy",
+        action="store_true",
+        help="Check space-filling quality of existing designs.",
+    )
     args = parser.parse_args()
     main(verify=args.verify_discrepancy)

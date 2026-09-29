@@ -1,7 +1,7 @@
-import arviz as az
-from pathlib import Path
 import os
 import sys
+
+import arviz as az
 
 # Add root to path
 sys.path.append(os.getcwd())

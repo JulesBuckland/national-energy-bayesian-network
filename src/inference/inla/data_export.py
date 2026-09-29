@@ -9,9 +9,11 @@ lists (built from libpysal.weights.Queen in model_unified.py) are 0-indexed
 to match PyMC/numpy convention, so build_inla_edge_frame re-indexes here,
 once, at the boundary, rather than pushing that concern into the R script.
 """
+
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 
 def build_inla_node_frame(

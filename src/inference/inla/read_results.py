@@ -14,6 +14,7 @@ there is no separate post-hoc projection step to reconstruct here, unlike
 compute_spatial_effect_summary.py's NUTS-era omega/omega_star rebuild from
 raw rho/sigma_spatial/theta/phi posterior draws.
 """
+
 import json
 from pathlib import Path
 
@@ -78,7 +79,9 @@ def read_inla_metadata(path: Path) -> dict:
         return json.load(f)
 
 
-def build_spatial_effect_summary_from_inla(random_effects_b: pd.DataFrame, msoa_codes: np.ndarray) -> pd.DataFrame:
+def build_spatial_effect_summary_from_inla(
+    random_effects_b: pd.DataFrame, msoa_codes: np.ndarray
+) -> pd.DataFrame:
     """Produces the same schema as compute_spatial_effect_summary.py's
     NUTS-era output (msoa21cd, effect_mean, effect_sd, effect_ci_2.5,
     effect_ci_97.5), sourced directly from INLA's `b` field -- no
@@ -125,7 +128,9 @@ def load_inla_results(output_dir: Path, n: int) -> dict:
                 f"fit_inla.R's quality gate rejected this fit: {diag_meta.get('gate_problems')}. "
                 f"Diagnostic output is at {output_dir}, but no canonical result was produced."
             )
-        raise FileNotFoundError(f"No inla_metadata.json found in {output_dir} -- was fit_inla.R run?")
+        raise FileNotFoundError(
+            f"No inla_metadata.json found in {output_dir} -- was fit_inla.R run?"
+        )
 
     metadata = read_inla_metadata(metadata_path)
     fixed_effects = read_inla_fixed_effects(output_dir / "inla_fixed_effects.csv")
