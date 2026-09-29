@@ -20,8 +20,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.core.exceptions import ConvergenceError
 
-class InlaGateFailedError(RuntimeError):
+
+class InlaGateFailedError(ConvergenceError):
     """Raised when fit_inla.R's quality gate rejected the fit -- mirrors
     model_unified.py's RuntimeError on the NUTS divergence/r_hat gate:
     refuse to treat an unconverged/unreliable fit as a valid result."""

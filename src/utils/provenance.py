@@ -9,6 +9,8 @@ from typing import Iterable
 
 import pandas as pd
 
+from src.core.exceptions import ProvenanceError
+
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     """Return the SHA-256 digest of a file without loading it all into memory."""
@@ -45,10 +47,10 @@ def assert_unique_keys(df: pd.DataFrame, keys: Iterable[str], *, label: str) -> 
     keys = list(keys)
     missing = [key for key in keys if key not in df.columns]
     if missing:
-        raise ValueError(f"{label} is missing key columns: {missing}")
+        raise ProvenanceError(f"{label} is missing key columns: {missing}")
     duplicate_count = int(df.duplicated(keys).sum())
     if duplicate_count:
-        raise ValueError(
+        raise ProvenanceError(
             f"{label} contains {duplicate_count} duplicate rows for keys {keys}; "
             "refusing to continue with an ambiguous merge."
         )
@@ -67,7 +69,7 @@ def assert_keys_subset(
     available_keys = set(available[key].astype(str))
     missing = sorted(required_keys - available_keys)
     if missing:
-        raise ValueError(
+        raise ProvenanceError(
             f"{required_label} contains {len(missing)} keys absent from "
             f"{available_label}; refusing to continue. Examples: {missing[:5]}"
         )
@@ -87,7 +89,7 @@ def assert_same_keys(
     missing_right = sorted(left_keys - right_keys)
     missing_left = sorted(right_keys - left_keys)
     if missing_right or missing_left:
-        raise ValueError(
+        raise ProvenanceError(
             f"Key mismatch between {left_label} and {right_label}: "
             f"{len(missing_right)} missing from {right_label}, "
             f"{len(missing_left)} missing from {left_label}."

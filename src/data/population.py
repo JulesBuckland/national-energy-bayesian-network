@@ -3,6 +3,7 @@ import numpy as np
 from tqdm import tqdm
 import logging
 import os
+from src.core.exceptions import DataValidationError
 from src.utils.provenance import assert_unique_keys, assert_keys_subset
 from src.config.settings import (
     NEED_MICRODATA_PATH, RAW_DIR,
@@ -394,7 +395,7 @@ def run_national_synthesis() -> None:
         if total_w > 0:
             cap = total_w * 0.05
             if (weights > cap).any():
-                raise ValueError(f"FATAL: IPF weights severely skewed for MSOA {msoa_code}! Max weight exceeds 5% cap.")
+                raise DataValidationError(f"FATAL: IPF weights severely skewed for MSOA {msoa_code}! Max weight exceeds 5% cap.")
             total_w = weights.sum()
 
         # Sampling — diversity-enforcing: try sampling without replacement to maximize unique HH
@@ -475,7 +476,7 @@ def run_national_synthesis() -> None:
         }))
 
     if not all_results:
-        raise ValueError("FATAL: No results generated — all MSOAs were skipped during synthesis.")
+        raise DataValidationError("FATAL: No results generated — all MSOAs were skipped during synthesis.")
 
     final_synthetic_pop = pd.concat(all_results, ignore_index=True)
 
@@ -484,7 +485,7 @@ def run_national_synthesis() -> None:
     actual_msoas = final_synthetic_pop['msoa21cd'].nunique()
     logger.info(f"Adversarial Check: Synthesized {actual_msoas} out of {expected_msoas} expected MSOAs.")
     if actual_msoas < expected_msoas * 0.99: # Allowing max 1% missing due to empty marginals
-        raise ValueError(f"FATAL: Silent MSOA drop detected! Dropped {expected_msoas - actual_msoas} MSOAs during synthesis!")
+        raise DataValidationError(f"FATAL: Silent MSOA drop detected! Dropped {expected_msoas - actual_msoas} MSOAs during synthesis!")
 
     # Apply Pandera Data Contract to enforce absolute statistical bounds
     from src.utils.data_contracts import population_schema

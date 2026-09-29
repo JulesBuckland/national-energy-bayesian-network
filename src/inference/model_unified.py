@@ -12,6 +12,8 @@ import os
 import joblib
 import arviz as az
 
+from src.core.exceptions import ConvergenceError, DataValidationError
+
 try:
     import psutil
 except ImportError:
@@ -126,7 +128,7 @@ def _use_csv_baseline(df: pd.DataFrame) -> pd.DataFrame:
     # Merge and return a new DataFrame (pure function)
     merged = df.merge(archetypes, on=["property_type", "property_age"], how="left")
     if merged["theoretical_gas_kwh"].isna().any():
-        raise ValueError("FATAL: Failed to map CSV baseline to some archetypes! Missing values found.")
+        raise DataValidationError("FATAL: Failed to map CSV baseline to some archetypes! Missing values found.")
     return df.assign(theoretical_gas_kwh=merged["theoretical_gas_kwh"].values)
 
 
@@ -419,7 +421,7 @@ def run_national_unified_model(
     # E2E Inline Assertion: Matrix Dimension Match
     assert len(gdf) == len(msoa_stats), f"FATAL: Dimension mismatch! GDF has {len(gdf)} but stats has {len(msoa_stats)}"
     if len(gdf) == 0:
-        raise ValueError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
+        raise DataValidationError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
 
     # Build Queen contiguity weights
     # Any: libpysal's stubs type this as WSP, which lacks neighbors/id2i.
@@ -543,7 +545,7 @@ def run_national_unified_model(
             diag_path.unlink(missing_ok=True)
         trace.to_netcdf(diag_path)
         logger.warning(f"DIAGNOSTIC trace (not a valid result, gate failed) saved to {diag_path}")
-        raise RuntimeError(
+        raise ConvergenceError(
             f"FATAL: {n_divergences} divergences exceeds the allowed maximum of "
             f"{MCMC_MAX_DIVERGENCES}. Refusing to save results as converged."
         )
@@ -556,7 +558,7 @@ def run_national_unified_model(
         max_r_hat = summary["r_hat"].max()
         logger.info(f"Convergence check: max r_hat={max_r_hat:.4f} (max allowed {MCMC_MAX_RHAT}).")
         if max_r_hat >= MCMC_MAX_RHAT:
-            raise RuntimeError(
+            raise ConvergenceError(
                 f"FATAL: max r_hat={max_r_hat:.4f} exceeds the allowed maximum of "
                 f"{MCMC_MAX_RHAT}. Refusing to save results as converged."
             )

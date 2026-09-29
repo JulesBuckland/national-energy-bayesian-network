@@ -41,6 +41,7 @@ import geopandas as gpd
 import libpysal
 import joblib
 
+from src.core.exceptions import DataValidationError
 from src.config.settings import (
     PROCESSED_DIR, MSOA_CONFOUNDERS_NATIONAL, BOUNDARIES_PATH,
     PILOT_MODE, setup_logging,
@@ -112,7 +113,7 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
             f"{df['msoa21cd'].nunique()} MSOAs for LAD codes {lad_codes} ***"
         )
         if df.empty:
-            raise ValueError(f"LAD filter {lad_codes} matched zero households -- check the codes.")
+            raise DataValidationError(f"LAD filter {lad_codes} matched zero households -- check the codes.")
 
     if GP_MODEL_PATH.exists():
         logger.info(f"Loading GP emulator from {GP_MODEL_PATH}...")
@@ -170,7 +171,7 @@ def prepare_national_msoa_dataset_for_inla(lad_codes: list | None = None) -> dic
     msoa_stats = msoa_stats.sort_values("msoa21cd").reset_index(drop=True)
     assert len(gdf) == len(msoa_stats), f"FATAL: Dimension mismatch! GDF has {len(gdf)} but stats has {len(msoa_stats)}"
     if len(gdf) == 0:
-        raise ValueError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
+        raise DataValidationError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
 
     # Any: libpysal's stubs type this as WSP, which lacks neighbors/id2i.
     w: Any = libpysal.weights.Queen.from_dataframe(gdf, ids=gdf["MSOA21CD"].tolist(), silence_warnings=True)
