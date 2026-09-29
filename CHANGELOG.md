@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `pyproject.toml` with project metadata, ruff and pytest configuration
 - `.gitignore` now whitelists `CHANGELOG.md` and `CITATION.md`
+- `.gitattributes` for cross-platform line ending consistency
+- `src/data/efus_loader.py` — EFUS 2017 data loader prototype
+- `src/research/desnz_lsoa_validation.py` — MSOA-level calibration vs DESNZ aggregates
+- `src/research/targeting_comparison.py` — T* vs physics-only retrofit targeting analysis
+
+### Changed
+- Repo canonical location moved to OneDrive with junction at `~/national-energy-bayesian-network/`
+- CLAUDE.md: venv instructions updated (create outside OneDrive at `~/.venvs/paper5/`)
 
 ## [1.0.0] — 2026-07-26
 
