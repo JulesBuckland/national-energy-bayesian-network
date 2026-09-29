@@ -1,0 +1,17 @@
+* text=auto eol=lf
+*.py text eol=lf
+*.R text eol=lf
+*.tex text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.parquet binary
+*.pkl binary
+*.nc binary
