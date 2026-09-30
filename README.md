@@ -233,6 +233,11 @@ R component checks under `tests/` are `.R` scripts and require an R-aware test
 runner or explicit `Rscript` invocation; they are not evidence supplied by a
 normal `pytest` run.
 
+On Windows, if `Rscript` is not on `PATH`, add `<R install>in` to `PATH` (the
+test suite skips INLA tests otherwise) and set `R_HOME` so `run_inla.py` finds it.
+Install into a user library if `Program Files` is not writable; INLA also needs
+`sf`, `Matrix` and `jsonlite`. Verified with R 4.6.1 and INLA 26.8.7.
+
 ---
 
 ## Repository layout
@@ -240,7 +245,8 @@ normal `pytest` run.
 ```
 src/
   cli/          entry point with input preflight checks
-  config/       settings.py — every path, constant and mode flag
+  config/       settings.py (import surface) over frozen PathConfig / ModelConfig
+  core/         domain exceptions (DataValidationError, ConvergenceError, ProvenanceError)
   data/         IPF population synthesis, archetypes, synthetic-input generator
   physics/      EnergyPlus batch driver and client
   inference/    GP surrogate, LHS sampler, ICAR scaling, NUTS model
